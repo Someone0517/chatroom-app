@@ -1,0 +1,173 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* 防止出現不必要的捲軸 */
+  background-color: #000000; /* 配合你的深色極簡主題 */
+}
+
+/* 強制讓 React 的根節點填滿整個螢幕 */
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.chatroom-container {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background-color: #f5f5f7; /* Apple 風格底色 */
+}
+
+/* 左側邊欄 */
+.sidebar {
+  width: 300px;
+  background-color: #ffffff;
+  border-right: 1px solid #d1d1d6;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #e5e5ea;
+}
+
+.search-bar {
+  padding: 10px;
+  display: flex;
+  gap: 5px;
+}
+
+.search-bar input {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.friend-list {
+  flex: 1;
+  overflow-y: auto; /* 只有列表可以滾動 */
+}
+
+.friend-item {
+  display: flex;
+  padding: 15px;
+  cursor: pointer;
+  border-bottom: 1px solid #e5e5ea;
+}
+
+.friend-item:hover {
+  background-color: #f0f0f5;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #007aff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+/* 右側聊天區 */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+}
+
+.chat-header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e5ea;
+  background-color: #f9f9f9;
+  display: flex;
+  align-items: center;
+}
+
+.message-list {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto; /* 只有訊息區塊可以滾動 */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  max-width: 60%;
+  padding: 10px 15px;
+  border-radius: 20px;
+}
+
+.message.received {
+  align-self: flex-start;
+  background-color: #e5e5ea;
+  color: black;
+}
+
+.message.sent {
+  align-self: flex-end;
+  background-color: #007aff; /* iMessage 藍色 */
+  color: white;
+}
+
+.chat-input-area {
+  padding: 15px;
+  border-top: 1px solid #d1d1d6;
+  display: flex;
+  gap: 10px;
+}
+
+.chat-input-area input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+}
+
+.btn-send, .btn-logout {
+  background-color: #007aff;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  padding: 8px 15px;
+  cursor: pointer;
+}
+
+.mobile-only {
+  display: none;
+}
+
+/* RWD: 手機版適配 (寬度小於 768px 時) */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 100%;
+  }
+  .hide-on-mobile {
+    display: none !important;
+  }
+  .mobile-only {
+    display: inline-block;
+    margin-right: 10px;
+    background: none;
+    color: #007aff;
+    border: none;
+    font-size: 16px;
+  }
+}
