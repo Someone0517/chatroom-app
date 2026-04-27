@@ -2,51 +2,51 @@
   box-sizing: border-box;
 }
 
-html, body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden; /* 防止出現不必要的捲軸 */
-  background-color: #000000; /* 配合你的深色極簡主題 */
-}
-
-/* 強制讓 React 的根節點填滿整個螢幕 */
-#root {
+html, body, #root {
   width: 100%;
   height: 100%;
   margin: 0;
   padding: 0;
+  overflow: hidden;
 }
 
+/* ================== 全域與亮色模式基礎 ================== */
 .chatroom-container {
   display: flex;
   height: 100vh;
   width: 100vw;
-  background-color: #f5f5f7; /* Apple 風格底色 */
+  background-color: #ffffff;
+  color: #000000;
 }
 
-/* 左側邊欄 */
 .sidebar {
   width: 300px;
-  background-color: #ffffff;
+  background-color: #f5f5f7;
   border-right: 1px solid #d1d1d6;
   display: flex;
   flex-direction: column;
 }
 
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+}
+
 .sidebar-header {
-  padding: 20px;
+  padding: 15px 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #e5e5ea;
+  border-bottom: 1px solid #d1d1d6;
 }
 
 .search-bar {
   padding: 10px;
   display: flex;
   gap: 5px;
+  border-bottom: 1px solid transparent;
 }
 
 .search-bar input {
@@ -54,11 +54,13 @@ html, body {
   padding: 8px;
   border-radius: 8px;
   border: 1px solid #ccc;
+  background: #fff;
+  color: #000;
 }
 
 .friend-list {
   flex: 1;
-  overflow-y: auto; /* 只有列表可以滾動 */
+  overflow-y: auto;
 }
 
 .friend-item {
@@ -66,30 +68,23 @@ html, body {
   padding: 15px;
   cursor: pointer;
   border-bottom: 1px solid #e5e5ea;
+  transition: background-color 0.2s;
 }
 
-.friend-item:hover {
-  background-color: #f0f0f5;
+.friend-item.active, .friend-item:hover {
+  background-color: #e5e5ea;
 }
 
-.avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #007aff;
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 10px;
+.friend-item h4 {
+  margin: 0;
+  color: #000000;
+  font-size: 16px;
 }
 
-/* 右側聊天區 */
-.chat-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background-color: #ffffff;
+.friend-item p {
+  margin: 5px 0 0 0;
+  color: #8e8e93;
+  font-size: 13px;
 }
 
 .chat-header {
@@ -98,12 +93,31 @@ html, body {
   background-color: #f9f9f9;
   display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
+.chat-input-area {
+  padding: 15px;
+  border-top: 1px solid #d1d1d6;
+  display: flex;
+  gap: 10px;
+  background-color: #ffffff;
+}
+
+.chat-input-area input {
+  flex: 1;
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid #ccc;
+  background: #fff;
+  color: #000;
+}
+
+/* 訊息氣泡 */
 .message-list {
   flex: 1;
   padding: 20px;
-  overflow-y: auto; /* 只有訊息區塊可以滾動 */
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -118,56 +132,216 @@ html, body {
 .message.received {
   align-self: flex-start;
   background-color: #e5e5ea;
-  color: black;
+  color: #000000;
 }
 
 .message.sent {
   align-self: flex-end;
-  background-color: #007aff; /* iMessage 藍色 */
-  color: white;
+  color: #ffffff;
 }
 
-.chat-input-area {
+/* ================== 夜晚模式 (Night Mode) ================== */
+.chatroom-container.night-mode {
+  background-color: #000000;
+  color: #ffffff;
+}
+
+.chatroom-container.night-mode .sidebar {
+  background-color: #1c1c1e;
+  border-right: 1px solid #333;
+}
+
+.chatroom-container.night-mode .chat-area {
+  background-color: #000000;
+}
+
+.chatroom-container.night-mode .sidebar-header {
+  border-bottom: 1px solid #333;
+}
+
+.chatroom-container.night-mode .search-bar input,
+.chatroom-container.night-mode .chat-input-area input {
+  background-color: #2c2c2e;
+  border: 1px solid #444;
+  color: #fff;
+}
+
+.chatroom-container.night-mode .friend-item {
+  border-bottom: 1px solid #2c2c2e;
+}
+
+.chatroom-container.night-mode .friend-item.active,
+.chatroom-container.night-mode .friend-item:hover {
+  background-color: #2c2c2e;
+}
+
+.chatroom-container.night-mode .friend-item h4 {
+  color: #ffffff;
+}
+
+.chatroom-container.night-mode .chat-header {
+  background-color: #1c1c1e;
+  border-bottom: 1px solid #333;
+}
+
+.chatroom-container.night-mode .chat-input-area {
+  background-color: #1c1c1e;
+  border-top: 1px solid #333;
+}
+
+.chatroom-container.night-mode .message.received {
+  background-color: #262629;
+  color: #ffffff;
+}
+
+/* ================== UI 元件 ================== */
+.profile-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: #333;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+  border: 1px solid #444;
+  overflow: hidden;
+}
+
+.avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+.btn-more {
+  background: none;
+  border: none;
+  color: #8e8e93;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px 10px;
+}
+
+.theme-popover {
+  position: absolute;
+  top: 50px;
+  right: 10px;
+  background: #2c2c2e;
   padding: 15px;
-  border-top: 1px solid #d1d1d6;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
   display: flex;
   gap: 10px;
+  z-index: 100;
 }
 
-.chat-input-area input {
-  flex: 1;
-  padding: 10px;
-  border-radius: 20px;
-  border: 1px solid #ccc;
-}
-
-.btn-send, .btn-logout {
-  background-color: #007aff;
-  color: white;
-  border: none;
-  border-radius: 20px;
-  padding: 8px 15px;
+.theme-dot {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   cursor: pointer;
+  border: 2px solid transparent;
 }
 
-.mobile-only {
-  display: none;
+.btn-send {
+  background-color: transparent;
+  border: none;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 10px;
 }
 
-/* RWD: 手機版適配 (寬度小於 768px 時) */
+/* ================== 設定 Modal ================== */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000;
+}
+
+/* 自動高度設定 */
+.modal-content {
+  background: #ffffff;
+  padding: 25px;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 320px;
+  height: auto;           /* 隨內容長度自適應 */
+  max-height: 80vh;       /* 若功能太多，最高不超過螢幕 80% */
+  overflow-y: auto;       /* 超出時可滾動 */
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.chatroom-container.night-mode .modal-content {
+  background: #1c1c1e;
+  border: 1px solid #333;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+}
+
+/* ================== iOS 滑動開關 ================== */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 28px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #d1d1d6; /* 亮色模式預設灰 */
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 24px;
+  width: 24px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+input:checked + .slider {
+  background-color: #34c759; /* iOS 綠色 */
+}
+
+input:checked + .slider:before {
+  transform: translateX(22px);
+}
+
+.chatroom-container.night-mode .slider {
+  background-color: #39393d; /* 夜晚模式預設灰 */
+}
+
+.chatroom-container.night-mode input:checked + .slider {
+  background-color: #34c759;
+}
+
+/* 手機版適配 */
+.mobile-only { display: none; }
 @media (max-width: 768px) {
-  .sidebar {
-    width: 100%;
-  }
-  .hide-on-mobile {
-    display: none !important;
-  }
+  .sidebar { width: 100%; }
+  .hide-on-mobile { display: none !important; }
   .mobile-only {
-    display: inline-block;
-    margin-right: 10px;
-    background: none;
-    color: #007aff;
-    border: none;
-    font-size: 16px;
+    display: inline-block; margin-right: 10px; background: none; color: inherit; border: none; font-size: 16px; padding: 0; cursor: pointer;
   }
 }
