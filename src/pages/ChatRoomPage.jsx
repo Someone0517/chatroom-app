@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { signOut } from "firebase/auth";
-import { collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp, orderBy, doc, updateDoc, deleteDoc, increment } from "firebase/firestore";
+import { 
+  collection, query, where, getDocs, addDoc, onSnapshot, 
+  serverTimestamp, orderBy, doc, updateDoc, deleteDoc, 
+  increment, arrayUnion, setDoc, arrayRemove 
+} from "firebase/firestore";
 import { auth, db } from "../services/firebaseConfig";
 import "./ChatRoom.css";
 
@@ -11,20 +15,32 @@ function ChatRoomPage({ user }) {
   const [activeRoomId, setActiveRoomId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
-  
-  const [showSettings, setShowSettings] = useState(false);
-  const [showThemePicker, setShowThemePicker] = useState(false);
-  const [nightMode, setNightMode] = useState(true);
+  const [roomMembersInfo, setRoomMembersInfo] = useState([]);
 
+  const [showSettings, setShowSettings] = useState(false);
+  const [personalId, setPersonalId] = useState(""); 
+  const [displayName, setDisplayName] = useState("");
+  const [nightMode, setNightMode] = useState(true);
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [contextMenuMsgId, setContextMenuMsgId] = useState(null);
 
   const scrollRef = useRef();
   const activeRoom = chatRooms.find(r => r.id === activeRoomId);
   const logoColor = activeRoom?.themeColor || "#ff9500";
 
-  // 1. 監聽聊天室列表
+  // 1. 初始化資料與監聽房間
   useEffect(() => {
     if (!user) return;
+    const fetchUser = async () => {
+      const snap = await getDocs(query(collection(db, "users"), where("uid", "==", user.uid)));
+      if (!snap.empty) {
+        const data = snap.docs[0].data();
+        setPersonalId(data.personalId || "");
+        setDisplayName(data.displayName || user.email.split('@')[0]);
+      }
+    };
+    fetchUser();
+
     const q = query(collection(db, "chats"), where("participants", "array-contains", user.uid));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const rooms = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -34,7 +50,7 @@ function ChatRoomPage({ user }) {
     return () => unsubscribe();
   }, [user]);
 
-  // 2. 監聽特定房間訊息
+  // 2. 監聽訊息與自動已讀
   useEffect(() => {
     if (!activeRoomId) return;
     const msgsRef = collection(db, "chats", activeRoomId, "messages");
@@ -43,108 +59,135 @@ function ChatRoomPage({ user }) {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
-    return () => unsubscribe();
-  }, [activeRoomId]);
-
-  // 3. 進入聊天室或收到新訊息時，自動將自己的未讀歸零，並更新最後閱讀時間
-  useEffect(() => {
-    if (!activeRoomId || !user) return;
-    const clearUnread = async () => {
-      try {
-        await updateDoc(doc(db, "chats", activeRoomId), {
-          [`unreadCount.${user.uid}`]: 0,
-          [`lastReadTime.${user.uid}`]: serverTimestamp()
-        });
-      } catch (e) { console.error("更新已讀狀態失敗", e); }
-    };
-    clearUnread();
-  }, [activeRoomId, messages.length, user]);
-
-  useEffect(() => {
-    const handleClickOutside = () => setContextMenuMsgId(null);
-    window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
-  }, []);
-
-  const handleUpdateRoomTheme = async (color) => {
-    try {
-      await updateDoc(doc(db, "chats", activeRoomId), { themeColor: color });
-      setShowThemePicker(false);
-    } catch (e) { console.error(e); }
-  };
-
-  // 4. 發送訊息 (同步增加對方的未讀數量)
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!newMessage.trim() || !activeRoomId) return;
-    
-    const msgText = newMessage;
-    setNewMessage("");
-
-    try {
-      // 找出對方的 UID
-      const receiverUid = activeRoom.participants.find(uid => uid !== user.uid);
-
-      await addDoc(collection(db, "chats", activeRoomId, "messages"), {
-        text: msgText, 
-        senderId: user.uid, 
-        senderEmail: user.email, 
-        createdAt: serverTimestamp(),
-      });
-
-      // 更新房間資訊：最後訊息、時間、並利用 increment(1) 增加對方的未讀數字
-      await updateDoc(doc(db, "chats", activeRoomId), {
-        lastMessageText: msgText,
-        updatedAt: serverTimestamp(),
-        [`unreadCount.${receiverUid}`]: increment(1)
-      });
-    } catch (e) { console.error(e); }
-  };
-
-  const handleDeleteForEveryone = async (msgId) => {
-    try {
-      await deleteDoc(doc(db, "chats", activeRoomId, "messages", msgId));
-      setContextMenuMsgId(null);
-    } catch (error) { console.error("刪除失敗：", error); }
-  };
-
-  const handleDeleteForMe = () => {
-    // 未來實作
-    alert("「對自己刪除」功能較複雜，目前為無用按鈕，未來會補上邏輯！");
-    setContextMenuMsgId(null);
-  };
-
-  const formatTime = (timestamp) => {
-    if (!timestamp) return "";
-    return timestamp.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  const handleAddFriend = async () => {
-    const targetEmail = searchInput.trim().toLowerCase();
-    if (!targetEmail || targetEmail === user.email?.toLowerCase()) return;
-    const qUser = query(collection(db, "users"), where("email", "==", targetEmail));
-    const querySnapshot = await getDocs(qUser);
-    if (querySnapshot.empty) { alert("找不到使用者"); return; }
-    const friendData = querySnapshot.docs[0].data();
-    if (chatRooms.find(r => r.participants.includes(friendData.uid))) { alert("已是好友"); return; }
-    
-    // 初始化新房間時，設定雙方的 unreadCount 與 lastReadTime
-    await addDoc(collection(db, "chats"), {
-      participants: [user.uid, friendData.uid],
-      participantEmails: [user.email, friendData.email],
-      themeColor: "#007aff",
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      unreadCount: {
-        [user.uid]: 0,
-        [friendData.uid]: 0
-      },
-      lastReadTime: {
-        [user.uid]: serverTimestamp(),
-        [friendData.uid]: serverTimestamp()
-      }
+    updateDoc(doc(db, "chats", activeRoomId), {
+      [`unreadCount.${user.uid}`]: 0,
+      [`lastReadTime.${user.uid}`]: serverTimestamp()
     });
-    setSearchInput("");
+    return () => unsubscribe();
+  }, [activeRoomId, user]);
+
+  // 3. 抓取目前聊天室成員詳細資料
+  useEffect(() => {
+    if (!activeRoom) return;
+    const fetchMembers = async () => {
+      const members = await Promise.all(
+        activeRoom.participants.map(async (pid) => {
+          const snap = await getDocs(query(collection(db, "users"), where("uid", "==", pid)));
+          return snap.docs[0]?.data();
+        })
+      );
+      setRoomMembersInfo(members.filter(Boolean));
+    };
+    fetchMembers();
+  }, [activeRoom]);
+
+  // --- 核心邏輯 ---
+
+  // 新增聊天室邏輯
+  const handleAddChat = async () => {
+    const input = searchInput.trim().toLowerCase();
+    if (!input || input === user.email?.toLowerCase() || input === personalId) return;
+
+    try {
+      // 檢查是否為 8 位數群組 ID
+      if (/^\d{8}$/.test(input)) {
+        const qGroup = query(collection(db, "chats"), where("groupId", "==", input));
+        const groupSnap = await getDocs(qGroup);
+        if (!groupSnap.empty) {
+          const roomId = groupSnap.docs[0].id;
+          await updateDoc(doc(db, "chats", roomId), {
+            participants: arrayUnion(user.uid),
+            participantEmails: arrayUnion(user.email),
+            [`unreadCount.${user.uid}`]: 0
+          });
+          setActiveRoomId(roomId);
+          setSearchInput("");
+          return;
+        }
+      }
+
+      // 一般使用者搜尋 (Email 或 個人 ID)
+      const qEmail = query(collection(db, "users"), where("email", "==", input));
+      const qId = query(collection(db, "users"), where("personalId", "==", input));
+      const [snapE, snapI] = await Promise.all([getDocs(qEmail), getDocs(qId)]);
+      const targetDoc = snapE.docs[0] || snapI.docs[0];
+
+      if (!targetDoc) { alert("找不到該使用者"); return; }
+      const targetData = targetDoc.data();
+
+      // 建立全新的一對一聊天室
+      const newRoom = await addDoc(collection(db, "chats"), {
+        participants: [user.uid, targetData.uid],
+        participantEmails: [user.email, targetData.email],
+        themeColor: "#007aff",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        type: "private",
+        unreadCount: { [user.uid]: 0, [targetData.uid]: 0 },
+        lastReadTime: { [user.uid]: serverTimestamp(), [targetData.uid]: serverTimestamp() }
+      });
+      setActiveRoomId(newRoom.id);
+      setSearchInput("");
+    } catch (e) { console.error(e); }
+  };
+
+  // 建立全新群組（不變更原聊天室）
+  const handleCreateNewGroup = async () => {
+    if (activeRoom.type === "group") return;
+    const randomId = Math.floor(10000000 + Math.random() * 90000000).toString();
+    const groupName = prompt("請輸入新群組名稱：", "新群組");
+    if (!groupName) return;
+
+    try {
+      const newGroup = await addDoc(collection(db, "chats"), {
+        type: "group",
+        groupId: randomId,
+        groupName: groupName,
+        participants: activeRoom.participants, // 初始包含目前對話的兩個人
+        participantEmails: activeRoom.participantEmails,
+        themeColor: "#007aff",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        unreadCount: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: 0 }), {}),
+        lastReadTime: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: serverTimestamp() }), {})
+      });
+      setActiveRoomId(newGroup.id);
+      setShowThemePicker(false);
+      alert(`全新群組已建立！群組 ID: ${randomId}\n原有私訊已保留。`);
+    } catch (e) { console.error(e); }
+  };
+
+  // 群組成員互加好友
+  const handleAddFriendFromList = async (target) => {
+    if (target.uid === user.uid) return;
+    try {
+      const newRoom = await addDoc(collection(db, "chats"), {
+        participants: [user.uid, target.uid],
+        participantEmails: [user.email, target.email],
+        themeColor: "#007aff",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        type: "private",
+        unreadCount: { [user.uid]: 0, [target.uid]: 0 }
+      });
+      const myName = displayName || user.email.split('@')[0];
+      const gName = activeRoom.groupName || "群組";
+      await addDoc(collection(db, "chats", newRoom.id, "messages"), {
+        text: `我是來自 ${gName} 的 ${myName}`,
+        senderId: user.uid,
+        senderName: myName,
+        createdAt: serverTimestamp()
+      });
+      alert("已發送私訊請求！");
+    } catch (e) { console.error(e); }
+  };
+
+  const formatTime = (ts) => {
+    if (!ts) return "";
+    const d = ts.toDate(), n = new Date(), diff = (n - d) / 60000;
+    if (diff < 60 && diff >= 0) return diff < 1 ? "剛剛" : `${Math.floor(diff)}分鐘前`;
+    if (d.toDateString() === n.toDateString()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   };
 
   return (
@@ -153,17 +196,26 @@ function ChatRoomPage({ user }) {
       {showSettings && (
         <div className="modal-overlay" onClick={() => setShowSettings(false)}>
           <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: '25px', color: nightMode ? '#fff' : '#000' }}>App 設定</h3>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-              <span style={{ fontSize: '16px', fontWeight: '500', color: nightMode ? '#fff' : '#000' }}>夜晚模式</span>
+            <h3 style={{ marginTop: 0 }}>個人設定</h3>
+            <div className="id-setting-group">
+              <label className="menu-label">個人 ID</label>
+              <div className="id-input-wrapper"><input value={personalId} onChange={e => setPersonalId(e.target.value)} /></div>
+            </div>
+            <div className="id-setting-group">
+              <label className="menu-label">暱稱</label>
+              <div className="id-input-wrapper"><input value={displayName} onChange={e => setDisplayName(e.target.value)} /></div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '20px 0' }}>
+              <span>夜晚模式</span>
               <label className="toggle-switch">
                 <input type="checkbox" checked={nightMode} onChange={e => setNightMode(e.target.checked)} />
                 <span className="slider"></span>
               </label>
             </div>
-            <div style={{ borderTop: nightMode ? '1px solid #333' : '1px solid #eee', paddingTop: '20px' }}>
-              <button onClick={() => signOut(auth)} style={{ width: '100%', padding: '12px', borderRadius: '10px', background: 'transparent', color: '#ff453a', border: '1px solid #ff453a', fontWeight: 'bold', cursor: 'pointer', fontSize: '16px' }}>登出帳號</button>
-            </div>
+            <button onClick={async () => {
+              await setDoc(doc(db, "users", user.uid), { displayName, personalId, uid: user.uid, email: user.email }, { merge: true });
+              setShowSettings(false);
+            }} style={{ width: '100%', padding: '12px', background: logoColor, color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>儲存設定</button>
           </div>
         </div>
       )}
@@ -171,37 +223,28 @@ function ChatRoomPage({ user }) {
       {/* 左側列表 */}
       <div className={`sidebar ${showChat ? "hide-on-mobile" : ""}`}>
         <div className="sidebar-header">
-          <h3 style={{ margin: 0, color: logoColor, transition: 'color 0.3s ease' }}>Messages</h3>
+          <h3 style={{ color: logoColor }}>Messages</h3>
           <div className="profile-icon" onClick={() => setShowSettings(true)}>
-            {user.photoURL ? <img src={user.photoURL} alt="profile" style={{width: '100%', height: '100%', objectFit: 'cover'}} /> : <span style={{fontSize: '20px'}}>👤</span>}
+            {user.photoURL ? <img src={user.photoURL} alt="p" style={{width:'100%'}} /> : "👤"}
           </div>
         </div>
         <div className="search-bar">
-          <input type="email" placeholder="搜尋 Email 新增好友..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
-          <button onClick={handleAddFriend} style={{background: 'transparent', border: 'none', color: logoColor, fontSize: '24px', cursor: 'pointer'}}>+</button>
+          <input placeholder="搜尋 ID, Email 或群組 ID..." value={searchInput} onChange={(e) => setSearchInput(e.target.value)} />
+          <button onClick={handleAddChat} style={{ color: logoColor, background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer' }}>+</button>
         </div>
-
         <div className="friend-list">
           {chatRooms.map(room => {
-            const friendEmail = room.participantEmails.find(e => e !== user.email);
-            // 動態取得自己的未讀數量
-            const unreadCount = room.unreadCount?.[user.uid] || 0; 
-
+            const isG = room.type === "group";
+            const title = isG ? (room.groupName || "群組") : room.participantEmails.find(e => e !== user.email).split('@')[0];
             return (
-              <div key={room.id} className={`friend-item ${activeRoomId === room.id ? "active" : ""}`}
-                onClick={() => { setActiveRoomId(room.id); setShowChat(true); }}>
-                <div className="avatar" style={{ backgroundColor: room.themeColor || "#007aff" }}>
-                  {friendEmail?.charAt(0).toUpperCase()}
-                </div>
-                <div className="friend-info" style={{ width: '100%' }}>
+              <div key={room.id} className={`friend-item ${activeRoomId === room.id ? "active" : ""}`} onClick={() => { setActiveRoomId(room.id); setShowChat(true); }}>
+                <div className="avatar" style={{ backgroundColor: room.themeColor || "#007aff" }}>{isG ? "👥" : title.charAt(0).toUpperCase()}</div>
+                <div className="friend-info">
                   <div className="friend-info-header">
-                    <h4 style={{ color: nightMode ? 'white' : 'black' }}>{friendEmail?.split('@')[0]}</h4>
-                    {/* 真實未讀紅點 */}
-                    {unreadCount > 0 && <span className="unread-badge">{unreadCount}</span>}
+                    <h4>{title}</h4>
+                    {room.unreadCount?.[user.uid] > 0 && <span className="unread-badge">{room.unreadCount[user.uid]}</span>}
                   </div>
-                  <div className="friend-preview">
-                    <p style={{ color: '#8e8e93' }}>{room.lastMessageText || "點擊開始對話"}</p>
-                  </div>
+                  <p className="friend-preview">{room.lastMessageText || "點擊開始對話"}</p>
                 </div>
               </div>
             );
@@ -215,80 +258,98 @@ function ChatRoomPage({ user }) {
           <>
             <div className="chat-header">
               <div style={{ display: 'flex', alignItems: 'center' }}>
-                <button className="btn-back mobile-only" onClick={() => setShowChat(false)} style={{ color: activeRoom.themeColor }}>&lt; 返回</button>
-                <h3 style={{ margin: 0, color: nightMode ? "#ffffff" : "#000000" }}>
-                  {activeRoom.participantEmails.find(e => e !== user.email).split('@')[0]}
+                <button className="mobile-only" onClick={() => setShowChat(false)} style={{ color: activeRoom.themeColor }}>&lt; 返回</button>
+                <h3 style={{ margin: 0, color: nightMode ? "white" : "black" }}>
+                  {activeRoom.type === "group" ? (activeRoom.groupName || "群組") : activeRoom.participantEmails.find(e => e !== user.email).split('@')[0]}
                 </h3>
               </div>
               <div style={{ position: 'relative' }}>
                 <button className="btn-more" onClick={() => setShowThemePicker(!showThemePicker)}>⋯</button>
                 {showThemePicker && (
                   <div className="theme-popover">
-                    {["#007aff", "#c4001a", "#34c759", "#af52de", "#ff9500"].map(c => (
-                      <div key={c} className="theme-dot" style={{ background: c }} onClick={() => handleUpdateRoomTheme(c)} />
-                    ))}
+                    {activeRoom.type === "group" ? (
+                      <>
+                        <div className="menu-section">
+                          <button onClick={() => updateDoc(doc(db, "chats", activeRoomId), { groupName: prompt("新名稱：") })}>更改群組名稱</button>
+                          <button onClick={async () => {
+                            await updateDoc(doc(db, "chats", activeRoomId), { participants: arrayRemove(user.uid), participantEmails: arrayRemove(user.email) });
+                            setActiveRoomId(null);
+                          }} style={{ color: '#ff453a' }}>退出群組</button>
+                        </div>
+                        <div className="menu-section">
+                          <label className="menu-label">成員清單 ({roomMembersInfo.length})</label>
+                          {roomMembersInfo.map(m => (
+                            <div key={m.uid} className="member-item">
+                              <div className="member-info">
+                                <span className="member-name">{m.displayName || m.email.split('@')[0]}</span>
+                                <span className="member-email">{m.email}</span>
+                              </div>
+                              {m.uid !== user.uid && <button className="btn-add-member" onClick={() => handleAddFriendFromList(m)}>+</button>}
+                            </div>
+                          ))}
+                        </div>
+                        <div className="group-id-footer">群組 ID: {activeRoom.groupId}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="menu-section">
+                          <label className="menu-label">好友資訊</label>
+                          <div className="friend-detail-box">
+                            <div style={{fontSize:'12px', marginBottom:'4px'}}>Email: {activeRoom.participantEmails.find(e => e !== user.email)}</div>
+                            <div style={{fontSize:'12px'}}>加入時間: {activeRoom.createdAt?.toDate().toLocaleDateString()}</div>
+                          </div>
+                          <button onClick={handleCreateNewGroup} style={{ width: '100%', padding: '10px', background: '#0a84ff', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>發起群組聊天</button>
+                        </div>
+                        <button style={{ color: '#ff453a', background: 'none', border: '1px solid #ff453a', padding: '8px', borderRadius: '8px', marginBottom: '5px' }} onClick={() => alert("功能預留：刪除用戶")}>刪除該用戶</button>
+                        <button style={{ color: '#ff453a', background: 'none', border: '1px solid #ff453a', padding: '8px', borderRadius: '8px' }} onClick={() => alert("功能預留：封鎖用戶")}>封鎖該用戶</button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
             </div>
 
             <div className="message-list">
-              {messages.map(msg => {
-                // 判斷是否已讀：如果對方的 lastReadTime 大於這則訊息的發送時間，就算已讀
-                const receiverUid = activeRoom.participants.find(uid => uid !== user.uid);
-                const receiverReadTime = activeRoom.lastReadTime?.[receiverUid]?.toMillis() || 0;
-                const msgTime = msg.createdAt?.toMillis() || 0;
-                const isRead = msgTime > 0 && msgTime <= receiverReadTime;
-
-                return (
-                  <div key={msg.id} className={`message-wrapper ${msg.senderId === user.uid ? "sent" : "received"}`}>
-                    
-                    {/* 修復：把 received / sent 放到 .message 裡面 */}
-                    <div 
-                      className={`message ${msg.senderId === user.uid ? "sent" : "received"}`}
+              {messages.map(msg => (
+                <div key={msg.id} className={`message-with-avatar ${msg.senderId === user.uid ? "sent" : "received"}`}>
+                  <div className="avatar-container">
+                    <div className="msg-avatar">{msg.senderName?.charAt(0).toUpperCase()}</div>
+                    {msg.senderName && <span className="avatar-subtext">{msg.senderName}</span>}
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start" }}>
+                    <div className={`message ${msg.senderId === user.uid ? "sent" : "received"}`}
                       style={msg.senderId === user.uid ? { backgroundColor: activeRoom.themeColor } : {}}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setContextMenuMsgId(msg.id);
-                      }}
-                    >
+                      onDoubleClick={() => msg.senderId === user.uid && setContextMenuMsgId(msg.id)}>
                       <p style={{ margin: 0 }}>{msg.text}</p>
                     </div>
-
-                    <div className="message-time">
-                      {formatTime(msg.createdAt)}
-                      {/* 如果是我發送的，且對方已讀，就顯示已讀標記 */}
-                      {msg.senderId === user.uid && isRead && (
-                        <span style={{ marginLeft: '6px', color: activeRoom.themeColor, fontWeight: 'bold' }}>已讀</span>
-                      )}
-                    </div>
-
+                    <span className="message-time">{formatTime(msg.createdAt)}</span>
                     {contextMenuMsgId === msg.id && (
-                    <div className="message-context-menu" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={handleDeleteForMe}>對自己刪除</button>
-    
-                    {/* 💡 關鍵修復：只有自己發送的訊息，才渲染「收回訊息」按鈕 */}
-                    {msg.senderId === user.uid && (
-                    <button className="danger" onClick={() => handleDeleteForEveryone(msg.id)}>收回訊息</button>
+                      <div className="message-context-menu">
+                        <button className="danger" onClick={() => deleteDoc(doc(db, "chats", activeRoomId, "messages", msg.id))}>收回訊息</button>
+                      </div>
                     )}
-                    </div>
-                )}
                   </div>
-                )
-              })}
+                </div>
+              ))}
               <div ref={scrollRef} />
             </div>
 
-            <form className="chat-input-area" onSubmit={handleSendMessage}>
-              <input type="text" placeholder="iMessage" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+            <form className="chat-input-area" onSubmit={async (e) => {
+              e.preventDefault();
+              if (!newMessage.trim()) return;
+              const txt = newMessage; setNewMessage("");
+              await addDoc(collection(db, "chats", activeRoomId, "messages"), {
+                text: txt, senderId: user.uid, senderName: displayName, createdAt: serverTimestamp()
+              });
+              const up = { lastMessageText: txt, updatedAt: serverTimestamp() };
+              activeRoom.participants.forEach(p => { if (p !== user.uid) up[`unreadCount.${p}`] = increment(1); });
+              updateDoc(doc(db, "chats", activeRoomId), up);
+            }}>
+              <input placeholder="iMessage" value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
               <button type="submit" className="btn-send" style={{ color: activeRoom.themeColor }}>送出</button>
             </form>
           </>
-        ) : (
-          <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", color: "#666" }}>
-            <p>請選擇左側好友開始聊天</p>
-          </div>
-        )}
+        ) : <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", color: "#666" }}>選擇聊天室開始對話</div>}
       </div>
     </div>
   );
