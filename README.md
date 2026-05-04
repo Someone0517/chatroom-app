@@ -14,7 +14,7 @@ DNE : N ; done : y ; checked : Y
   |-- Create private chatrooms
   |-- Other members can see your messages
   |-- Load all history message
-  L-- Invite new members
+   L-- Invite new members
 
 
 | **Advanced components**    | **Score** | **Check** |
@@ -27,27 +27,30 @@ DNE : N ; done : y ; checked : Y
 
 
 | **User Profile(10%)**      |**be show**| **Check** |
+| :------------------------- | :-------: | :-------: |
 | Profile picture            |     v     |     Y     | (做成點擊頭貼顯示)
 | Username                   |     v     |     Y     |
 | Email                      |     v     |     Y     |
-| Phone number               |     X     |     N     |
-| Address                    |     X     |     N     |
+| Phone number               |     X     |     Y     |
+| Address                    |     X     |     Y     |
 
 | **Message operation(10%)** | **score** | **Check** |
+| :------------------------- | :-------: | :-------: |
 | Unsend message             |           |     Y     |
-| Edit message               |           |     N     |
-| Search message             |           |     N     |
-| Send image                 |           |     N     |
+| Edit message               |           |     Y     |
+| Search message             |           |     Y     |
+| Send image                 |           |     Y     |
     oprate by double click the message
 
 |    **Bonus Components**    | **Score** | **Check** |
 | :------------------------- | :-------: | :-------: |
 | Reply for specify message  |    6%     |     N     |
 | Send the emoji             |    3%     |     N     |
-| Block User                 |    2%     |     N     |
+| Block User                 |    2%     |     N     | (待測試)
 
 ### How to use 
 
+current DNE
 
 # React + Vite
 

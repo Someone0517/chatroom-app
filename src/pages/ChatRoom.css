@@ -811,3 +811,212 @@ mark {
 .edited-tag {
   font-size: 10px; color: #8e8e93; margin-left: 6px;
 }
+
+/* ================== 訊息過濾列與陌生訊息處理 ================== */
+
+/* 側邊欄過濾列 */
+.sidebar-filters {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px;
+  border-bottom: 1px solid rgba(120, 120, 128, 0.2);
+  background: #f9f9f9;
+}
+
+.chatroom-container.night-mode .sidebar-filters {
+  background: #1c1c1e;
+  border-bottom: 1px solid #333;
+}
+
+.filter-btn {
+  background: transparent; border: none; cursor: pointer;
+  color: #8e8e93; padding: 6px 12px; border-radius: 8px;
+  display: flex; justify-content: center; align-items: center;
+  transition: all 0.2s;
+}
+
+.filter-btn:hover {
+  background: rgba(120, 120, 128, 0.15);
+}
+
+.filter-btn.active {
+  color: #0a84ff;
+  background: rgba(10, 132, 255, 0.1);
+}
+
+/* 陌生訊息接受/拒絕面板 */
+.stranger-action-area {
+  padding: 20px;
+  border-top: 1px solid rgba(120, 120, 128, 0.2);
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  align-items: center;
+  z-index: 10;
+}
+
+.chatroom-container.night-mode .stranger-action-area {
+  background: #1c1c1e;
+  border-top: 1px solid #333;
+}
+
+.stranger-action-area p {
+  margin: 0;
+  color: #8e8e93;
+  font-size: 13px;
+  text-align: center;
+}
+
+.stranger-buttons {
+  display: flex;
+  gap: 15px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.btn-decline {
+  background: rgba(255, 69, 58, 0.1);
+  color: #ff453a;
+  border: 1px solid #ff453a;
+  padding: 10px;
+  border-radius: 12px;
+  font-weight: bold;
+  flex: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-accept {
+  background: #0a84ff;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 12px;
+  font-weight: bold;
+  flex: 1;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-decline:hover { background: #ff453a; color: white; }
+.btn-accept:hover { background: #0070e0; }
+
+/* ================== 系統訊息、紅點與側邊欄選單 ================== */
+
+/* 系統訊息 (置中灰色文字) */
+.system-message {
+  text-align: center;
+  font-size: 12px;
+  color: #8e8e93;
+  margin: 15px 0;
+  width: 100%;
+}
+
+/* 陌生訊息紅點 */
+.stranger-dot-container {
+  position: relative;
+  display: flex;
+}
+.stranger-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  background-color: #ff453a;
+  border-radius: 50%;
+  border: 2px solid #f9f9f9;
+}
+.chatroom-container.night-mode .stranger-dot {
+  border-color: #1c1c1e;
+}
+
+/* 側邊欄聊天室選項 (...) */
+.sidebar-room-more-btn {
+  background: none; border: none; color: #8e8e93;
+  font-size: 16px; padding: 0 5px; cursor: pointer;
+  opacity: 0; transition: opacity 0.2s;
+}
+.friend-item:hover .sidebar-room-more-btn {
+  opacity: 1;
+}
+.sidebar-room-menu {
+  position: absolute;
+  right: 20px;
+  top: 35px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+  z-index: 20;
+  border: 1px solid rgba(120, 120, 128, 0.2);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.chatroom-container.night-mode .sidebar-room-menu {
+  background: #2c2c2e; border: 1px solid #444; box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+}
+.sidebar-room-menu button {
+  background: none; border: none; padding: 10px 15px; color: #ff453a;
+  cursor: pointer; font-size: 13px; text-align: left;
+}
+.sidebar-room-menu button:hover {
+  background: rgba(120, 120, 128, 0.15);
+}
+
+/* 封鎖狀態輸入框 */
+.blocked-input-area {
+  display: flex; justify-content: center; align-items: center;
+  padding: 20px; color: #8e8e93; background: rgba(120, 120, 128, 0.1);
+  border-top: 1px solid rgba(120, 120, 128, 0.2);
+  font-size: 14px; border-radius: 12px; margin: 10px;
+}
+
+/* ================== 封鎖名單管理 ================== */
+.btn-block-list-manage {
+  width: calc(100% - 30px);
+  margin: 10px 15px;
+  padding: 10px;
+  background: rgba(120, 120, 128, 0.1);
+  color: #ff453a;
+  border: 1px dashed #ff453a;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-block-list-manage:hover {
+  background: rgba(255, 69, 58, 0.1);
+}
+
+.blocked-user-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(120, 120, 128, 0.2);
+}
+
+.blocked-user-item:last-child {
+  border-bottom: none;
+}
+
+.btn-unblock {
+  background: #34c759;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.btn-unblock:hover {
+  background: #28a745;
+}

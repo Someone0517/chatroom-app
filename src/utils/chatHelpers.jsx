@@ -15,9 +15,15 @@ export const renderAvatar = (config, fallbackName) => {
 };
 
 export const getFriendDynamicName = (room, roomMembersInfo, user) => {
+  if (!room) return "";
   if (room.type === "group") return room.groupName || "群組";
+  
   const friendUid = room.participants.find(uid => uid !== user.uid);
   const friendInfo = roomMembersInfo.find(m => m.uid === friendUid);
+  
+  // 如果對方封鎖了你，強制顯示未知
+  if (friendInfo?.blockedUsers?.includes(user.uid)) return "未知";
+  
   if (friendInfo && friendInfo.displayName) return friendInfo.displayName;
   const friendEmail = room.participantEmails.find(e => e !== user.email);
   return friendEmail ? friendEmail.split('@')[0] : "未知";
