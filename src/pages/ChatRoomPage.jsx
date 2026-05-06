@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp, orderBy, doc, updateDoc, deleteDoc, increment, arrayUnion, setDoc, arrayRemove } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp, orderBy, doc, updateDoc, deleteDoc, increment, arrayUnion, setDoc, arrayRemove, deleteField } from "firebase/firestore";
 import { db } from "../services/firebaseConfig";
 import "./ChatRoom.css";
 
@@ -7,10 +7,11 @@ import SettingsModal from "../components/SettingsModal";
 import InviteModal from "../components/InviteModal";
 import Sidebar from "../components/Sidebar";
 import UserProfilePopover from "../components/UserProfilePopover";
-import BlockListModal from "../components/BlockListModal"; // 💡 引入全新的封鎖名單元件
+import BlockListModal from "../components/BlockListModal";
 import { formatTime, renderAvatar, getFriendDynamicName, compressImage } from "../utils/chatHelpers";
 
 const presetColors = ["#007aff", "#34c759", "#ff9500", "#ff453a", "#af52de"];
+const QUICK_EMOJIS = ["❤️", "😂", "😮", "😢", "😡", "👍"]; // Instagram 預設表情
 
 function ChatRoomPage({ user }) {
   const [showChat, setShowChat] = useState(false);
@@ -31,7 +32,7 @@ function ChatRoomPage({ user }) {
   const [showEmojiMenu, setShowEmojiMenu] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showThemePicker, setShowThemePicker] = useState(false);
-  const [showBlockListModal, setShowBlockListModal] = useState(false); // 💡 新增控制封鎖名單的狀態
+  const [showBlockListModal, setShowBlockListModal] = useState(false); 
   const [avatarPopover, setAvatarPopover] = useState({ show: false, x: 0, y: 0, user: null, isSelf: false });
 
   const [personalId, setPersonalId] = useState(""); 
@@ -51,8 +52,13 @@ function ChatRoomPage({ user }) {
 
   const [chatImagePreview, setChatImagePreview] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  
+  // 💡 訊息操作狀態
   const [msgMenuId, setMsgMenuId] = useState(null);
+  const [reactionMenuId, setReactionMenuId] = useState(null);
   const [editMsgData, setEditMsgData] = useState(null);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [highlightMsgId, setHighlightMsgId] = useState(null);
 
   const scrollRef = useRef();
   const msgRefs = useRef({}); 
@@ -103,10 +109,13 @@ function ChatRoomPage({ user }) {
     const q = query(collection(db, "chats", activeRoomId, "messages"), orderBy("createdAt", "asc"));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      if (!showSearch) setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+      if (!showSearch && !replyingTo) setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
     });
     updateDoc(doc(db, "chats", activeRoomId), { [`unreadCount.${user.uid}`]: 0, [`lastReadTime.${user.uid}`]: serverTimestamp() });
-    setShowSearch(false); setChatSearchText(""); setChatImagePreview(null); setMsgMenuId(null); setEditMsgData(null);
+    
+    // 切換聊天室時重置所有操作
+    setShowSearch(false); setChatSearchText(""); setChatImagePreview(null); 
+    setMsgMenuId(null); setReactionMenuId(null); setEditMsgData(null); setReplyingTo(null);
     return () => unsubscribe();
   }, [activeRoomId, user]);
 
@@ -132,6 +141,15 @@ function ChatRoomPage({ user }) {
     }
   }, [searchIndex, searchMatches]);
 
+  // 💡 點擊引用訊息進行跳轉與高亮
+  const handleScrollToRepliedMessage = (msgId) => {
+    if (msgRefs.current[msgId]) {
+      msgRefs.current[msgId].scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightMsgId(msgId);
+      setTimeout(() => setHighlightMsgId(null), 1500); // 動畫結束後移除
+    }
+  };
+
   const renderHighlightedText = (text) => {
     if (!chatSearchText.trim() || !text) return text;
     const parts = text.split(new RegExp(`(${chatSearchText})`, 'gi'));
@@ -150,17 +168,45 @@ function ChatRoomPage({ user }) {
     await addDoc(collection(db, "chats", roomId, "messages"), { text, isSystem: true, createdAt: serverTimestamp() });
   };
 
+  // 💡 發送訊息時附加 replyTo 資料
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !chatImagePreview) return;
     const txt = newMessage; const imgUrl = chatImagePreview;
-    setNewMessage(""); setChatImagePreview(null);
+    
+    // 建立引用快照
+    const replyData = replyingTo ? {
+      id: replyingTo.id,
+      text: replyingTo.text || "[圖片]",
+      senderName: replyingTo.senderName
+    } : null;
+
+    setNewMessage(""); setChatImagePreview(null); setReplyingTo(null);
+    
     try {
-        await addDoc(collection(db, "chats", activeRoomId, "messages"), { text: txt, imageUrl: imgUrl, senderId: user.uid, createdAt: serverTimestamp(), isEdited: false });
+        await addDoc(collection(db, "chats", activeRoomId, "messages"), { 
+          text: txt, imageUrl: imgUrl, senderId: user.uid, createdAt: serverTimestamp(), isEdited: false,
+          replyTo: replyData
+        });
         const up = { lastMessageText: imgUrl ? "[圖片]" : txt, updatedAt: serverTimestamp() };
         activeRoom.participants.forEach(p => { if (p !== user.uid) up[`unreadCount.${p}`] = increment(1); });
         await updateDoc(doc(db, "chats", activeRoomId), up);
     } catch(err) { console.error("發送錯誤:", err); }
+  };
+
+  // 💡 發送或收回表情符號
+  const toggleReaction = async (msgId, emoji, currentReactions) => {
+    const msgRef = doc(db, "chats", activeRoomId, "messages", msgId);
+    const myCurrentReaction = currentReactions?.[user.uid];
+    
+    if (myCurrentReaction === emoji) {
+      // 點擊相同的表情 -> 收回 (Unsend)
+      await updateDoc(msgRef, { [`reactions.${user.uid}`]: deleteField() });
+    } else {
+      // 點擊新的表情 -> 覆蓋或發送
+      await updateDoc(msgRef, { [`reactions.${user.uid}`]: emoji });
+    }
+    setReactionMenuId(null);
   };
 
   const submitEditMessage = async () => {
@@ -179,7 +225,6 @@ function ChatRoomPage({ user }) {
     const input = searchInput.trim().toLowerCase();
     if (!input || input === user.email?.toLowerCase() || input === personalId) return;
     try {
-      // 1. 群組代碼搜尋邏輯
       if (/^\d{8}$/.test(input)) {
         const gSnap = await getDocs(query(collection(db, "chats"), where("groupId", "==", input)));
         if (!gSnap.empty) {
@@ -188,33 +233,19 @@ function ChatRoomPage({ user }) {
           setActiveRoomId(gSnap.docs[0].id); setSearchInput(""); return;
         }
       }
-      
-      // 2. 用戶搜尋邏輯
       const [snapE, snapI] = await Promise.all([getDocs(query(collection(db, "users"), where("email", "==", input))), getDocs(query(collection(db, "users"), where("personalId", "==", input)))]);
       const targetDoc = snapE.docs[0] || snapI.docs[0];
       if (!targetDoc) return alert("找不到該使用者");
-      
       const targetData = targetDoc.data();
-      const targetUid = targetData.uid;
 
-      // 🛑 狀態檢查 1：封鎖狀態
-      const iBlockedThem = currentUserInfo?.blockedUsers?.includes(targetUid);
-      const theyBlockedMe = targetData.blockedUsers?.includes(user.uid);
-      if (iBlockedThem) return alert("你已封鎖此用戶，請先至設定解除封鎖。");
-      if (theyBlockedMe) return alert("很抱歉，你無法新增此用戶。"); // 婉轉提示被對方封鎖
+      if (currentUserInfo?.blockedUsers?.includes(targetData.uid)) return alert("你已封鎖此用戶，請先至設定解除封鎖。");
+      if (targetData.blockedUsers?.includes(user.uid)) return alert("很抱歉，你無法新增此用戶。");
 
-      // 🛑 狀態檢查 2：好友狀態 (檢查是否已存在私聊房間)
-      const existingRoom = chatRooms.find(r => (r.type === "private" || (!r.type && r.participants.length === 2)) && r.participants.includes(targetUid));
-      if (existingRoom) {
-        alert("你們已經是好友囉！");
-        setActiveRoomId(existingRoom.id); // 直接幫使用者跳轉到該聊天室
-        setSearchInput("");
-        return;
-      }
+      const existingRoom = chatRooms.find(r => (r.type === "private" || (!r.type && r.participants.length === 2)) && r.participants.includes(targetData.uid));
+      if (existingRoom) { alert("你們已經是好友囉！"); setActiveRoomId(existingRoom.id); setSearchInput(""); return; }
 
-      // 🛑 狀態檢查 3：非好友狀態 (建立新房間)
       const newRoom = await addDoc(collection(db, "chats"), {
-        participants: [user.uid, targetUid], participantEmails: [user.email, targetData.email], themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), type: "private", unreadCount: { [user.uid]: 0, [targetUid]: 0 }, lastReadTime: { [user.uid]: serverTimestamp(), [targetUid]: serverTimestamp() },
+        participants: [user.uid, targetData.uid], participantEmails: [user.email, targetData.email], themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), type: "private", unreadCount: { [user.uid]: 0, [targetData.uid]: 0 }, lastReadTime: { [user.uid]: serverTimestamp(), [targetData.uid]: serverTimestamp() },
         acceptedBy: [user.uid] 
       });
       setActiveRoomId(newRoom.id); setSearchInput("");
@@ -265,22 +296,12 @@ function ChatRoomPage({ user }) {
   
   const handleAddFriendFromList = async (target) => {
     if (target.uid === user.uid) return;
+    if (currentUserInfo?.blockedUsers?.includes(target.uid)) return alert("你已封鎖此用戶，請先解除封鎖。");
+    if (target.blockedUsers?.includes(user.uid)) return alert("很抱歉，你無法新增此用戶。");
 
-    // 🛑 狀態檢查 1：封鎖狀態
-    const iBlockedThem = currentUserInfo?.blockedUsers?.includes(target.uid);
-    const theyBlockedMe = target.blockedUsers?.includes(user.uid);
-    if (iBlockedThem) return alert("你已封鎖此用戶，請先解除封鎖。");
-    if (theyBlockedMe) return alert("很抱歉，你無法新增此用戶。");
-
-    // 🛑 狀態檢查 2：好友狀態
     const existingRoom = chatRooms.find(r => (r.type === "private" || (!r.type && r.participants.length === 2)) && r.participants.includes(target.uid));
-    if (existingRoom) {
-      alert("你們已經是好友囉！");
-      setActiveRoomId(existingRoom.id);
-      return;
-    }
+    if (existingRoom) { alert("你們已經是好友囉！"); setActiveRoomId(existingRoom.id); return; }
 
-    // 🛑 狀態檢查 3：非好友狀態 (建立新房間)
     const newRoom = await addDoc(collection(db, "chats"), { participants: [user.uid, target.uid], participantEmails: [user.email, target.email], themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), type: "private", unreadCount: { [user.uid]: 0, [target.uid]: 0 }, acceptedBy: [user.uid] });
     await addDoc(collection(db, "chats", newRoom.id, "messages"), { text: `我是來自 ${activeRoom.groupName || "群組"} 的 ${displayName || user.email.split('@')[0]}`, senderId: user.uid, createdAt: serverTimestamp() });
     alert("已發送私訊請求！");
@@ -288,10 +309,7 @@ function ChatRoomPage({ user }) {
 
   const handleAcceptRequest = async () => { await updateDoc(doc(db, "chats", activeRoomId), { acceptedBy: arrayUnion(user.uid) }); };
   const handleDeclineRequest = async () => {
-    if (window.confirm("確定要拒絕並刪除這個聊天室嗎？")) {
-      await deleteDoc(doc(db, "chats", activeRoomId));
-      setActiveRoomId(null);
-    }
+    if (window.confirm("確定要拒絕並刪除這個聊天室嗎？")) { await deleteDoc(doc(db, "chats", activeRoomId)); setActiveRoomId(null); }
   };
 
   const handleAvatarClick = async (e, targetUid) => {
@@ -310,12 +328,10 @@ function ChatRoomPage({ user }) {
   const handleBlockUser = async (targetUid) => {
     const isCurrentlyBlocked = currentUserInfo?.blockedUsers?.includes(targetUid);
     if (isCurrentlyBlocked) {
-      await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayRemove(targetUid) });
-      alert("已解除封鎖");
+      await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayRemove(targetUid) }); alert("已解除封鎖");
     } else {
       if(window.confirm("確定要封鎖該用戶嗎？雙方將無法傳送訊息。")) {
-        await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayUnion(targetUid) });
-        alert("已封鎖該用戶");
+        await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayUnion(targetUid) }); alert("已封鎖該用戶");
       }
     }
     setAvatarPopover({show: false});
@@ -328,20 +344,18 @@ function ChatRoomPage({ user }) {
   if (activeRoom && activeRoom.type !== "group") {
     const friendUid = activeRoom.participants.find(uid => uid !== user.uid);
     const friendInfo = roomMembersInfo.find(m => m.uid === friendUid);
-    const hasBlockedMe = friendInfo?.blockedUsers?.includes(user.uid);
-    const iBlockedThem = currentUserInfo?.blockedUsers?.includes(friendUid);
-    
-    if (hasBlockedMe) { isBlocked = true; blockMessage = "你已被封鎖"; }
-    else if (iBlockedThem) { isBlocked = true; blockMessage = "解除封鎖後即可傳送訊息"; }
+    if (friendInfo?.blockedUsers?.includes(user.uid)) { isBlocked = true; blockMessage = "你已被封鎖"; }
+    else if (currentUserInfo?.blockedUsers?.includes(friendUid)) { isBlocked = true; blockMessage = "解除封鎖後即可傳送訊息"; }
   }
 
+  // 點擊背景收合所有選單
+  const closeAllMenus = () => { setMsgMenuId(null); setReactionMenuId(null); };
+
   return (
-    <div className={`chatroom-container ${nightMode ? "night-mode" : ""}`} onClick={() => setMsgMenuId(null)}>
+    <div className={`chatroom-container ${nightMode ? "night-mode" : ""}`} onClick={closeAllMenus}>
       <UserProfilePopover popoverData={avatarPopover} setPopoverData={setAvatarPopover} nightMode={nightMode} handleAddFriendFromList={handleAddFriendFromList} handleCreateNewGroup={handleCreateNewGroup} myFriends={myFriends} handleBlockUser={handleBlockUser} currentUserInfo={currentUserInfo} />
       <SettingsModal showSettings={showSettings} setShowSettings={setShowSettings} showAvatarPicker={showAvatarPicker} setShowAvatarPicker={setShowAvatarPicker} showEmojiMenu={showEmojiMenu} setShowEmojiMenu={setShowEmojiMenu} nightMode={nightMode} setNightMode={setNightMode} personalId={personalId} setPersonalId={setPersonalId} displayName={displayName} setDisplayName={setDisplayName} phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} address={address} setAddress={setAddress} avatarImage={avatarImage} setAvatarImage={setAvatarImage} avatarBgColor={avatarBgColor} setAvatarBgColor={setAvatarBgColor} avatarEmoji={avatarEmoji} setAvatarEmoji={setAvatarEmoji} handleSaveProfile={handleSaveProfile} handleImageUpload={handleImageUpload} user={user} logoColor={logoColor} presetColors={presetColors} />
       <InviteModal showInviteModal={showInviteModal} setShowInviteModal={setShowInviteModal} activeRoom={activeRoom} myFriends={myFriends} handleInviteFriendToGroup={handleInviteFriendToGroup} nightMode={nightMode} />
-      
-      {/* 💡 導入 BlockListModal */}
       <BlockListModal showBlockListModal={showBlockListModal} setShowBlockListModal={setShowBlockListModal} nightMode={nightMode} currentUserInfo={currentUserInfo} user={user} />
 
       <Sidebar 
@@ -436,8 +450,12 @@ function ChatRoomPage({ user }) {
                   });
                 }
 
+                // 💡 計算表情回應
+                const reactionEntries = Object.values(msg.reactions || {});
+                const uniqueEmojis = [...new Set(reactionEntries)].slice(0, 3); // 最多顯示三種不重複表情
+
                 return (
-                  <div key={msg.id} className={`message-with-avatar ${msg.senderId === user.uid ? "sent" : "received"}`} ref={el => msgRefs.current[msg.id] = el}>
+                  <div key={msg.id} className={`message-with-avatar ${msg.senderId === user.uid ? "sent" : "received"} ${highlightMsgId === msg.id ? 'highlight-flash' : ''}`} ref={el => msgRefs.current[msg.id] = el}>
                     
                     <div className="avatar-container" style={{cursor: isBlockedByThem ? 'default' : 'pointer'}} onClick={(e) => { if(!isBlockedByThem) handleAvatarClick(e, msg.senderId); }}>
                       <div className="msg-avatar" style={{backgroundColor: currentAvatarConfig?.image ? "transparent" : (currentAvatarConfig?.bgColor || "#007aff")}}>
@@ -447,8 +465,20 @@ function ChatRoomPage({ user }) {
                     </div>
 
                     <div className="msg-hover-container">
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start" }}>
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start", position: 'relative' }}>
+                        
                         <div className={`message ${msg.senderId === user.uid ? "sent" : "received"}`} style={msg.senderId === user.uid ? { backgroundColor: activeRoom.themeColor } : {}}>
+                          
+                          {/* 💡 渲染被引用的訊息區塊 */}
+                          {msg.replyTo && (
+                            <div className="replied-msg-box" onClick={() => handleScrollToRepliedMessage(msg.replyTo.id)}>
+                              <span style={{fontWeight: 'bold', marginBottom: '2px'}}>{msg.replyTo.senderName}</span>
+                              <span style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px'}}>
+                                {msg.replyTo.text}
+                              </span>
+                            </div>
+                          )}
+
                           {msg.imageUrl && <img src={msg.imageUrl} className="chat-message-image" alt="attachment" />}
                           {isEditing ? (
                             <div onClick={e => e.stopPropagation()}>
@@ -465,21 +495,54 @@ function ChatRoomPage({ user }) {
                             </p>
                           )}
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '4px' }}>
+
+                        {/* 💡 渲染表情符號徽章 */}
+                        {uniqueEmojis.length > 0 && (
+                          <div className="reaction-badge">
+                            {uniqueEmojis.join("")}
+                            {reactionEntries.length > 1 && <span className="reaction-count">{reactionEntries.length}</span>}
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: uniqueEmojis.length > 0 ? '16px' : '4px' }}>
                           <span className="message-time" style={{marginTop: 0}}>{formatTime(msg.createdAt)}</span>
                           {msg.senderId === user.uid && readCount > 0 && (
-                            <span style={{ fontSize: '11px', color: '#8e8e93' }}>
-                              {activeRoom.type === "group" ? `已讀 ${readCount}` : "已讀"}
-                            </span>
+                            <span style={{ fontSize: '11px', color: '#8e8e93' }}>{activeRoom.type === "group" ? `已讀 ${readCount}` : "已讀"}</span>
                           )}
                         </div>
                       </div>
 
-                      {msg.senderId === user.uid && !isEditing && (
-                        <div style={{position: 'relative'}}>
-                          <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setMsgMenuId(msgMenuId === msg.id ? null : msg.id); }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+                      {/* 💡 訊息 Hover 工具列 (回覆、表情、更多) */}
+                      {!isEditing && (
+                        <div style={{position: 'relative', display: 'flex'}}>
+                          
+                          {/* 表情按鈕 */}
+                          <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setReactionMenuId(reactionMenuId === msg.id ? null : msg.id); setMsgMenuId(null); }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
                           </button>
+
+                          {/* 回覆按鈕 */}
+                          <button className="btn-msg-more" onClick={() => setReplyingTo({id: msg.id, text: msg.text || (msg.imageUrl && "[圖片]"), senderName: currentName})}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                          </button>
+
+                          {/* 更多 (只有發送者能編輯與收回) */}
+                          {msg.senderId === user.uid && (
+                            <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setMsgMenuId(msgMenuId === msg.id ? null : msg.id); setReactionMenuId(null); }}>
+                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+                            </button>
+                          )}
+                          
+                          {/* 表情面板 Popover */}
+                          {reactionMenuId === msg.id && (
+                            <div className="reaction-popover" onClick={e => e.stopPropagation()}>
+                              {QUICK_EMOJIS.map(emoji => (
+                                <span key={emoji} onClick={() => toggleReaction(msg.id, emoji, msg.reactions)}>{emoji}</span>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* 更多面板 Popover */}
                           {msgMenuId === msg.id && (
                             <div className="msg-action-popover" onClick={e => e.stopPropagation()}>
                               <button onClick={() => { setEditMsgData({id: msg.id, text: msg.text || ""}); setMsgMenuId(null); }}>編輯</button>
@@ -506,22 +569,36 @@ function ChatRoomPage({ user }) {
             ) : isBlocked ? (
               <div className="blocked-input-area">{blockMessage}</div>
             ) : (
-              <form className="chat-input-area" onSubmit={handleSendMessage} style={{ flexDirection: 'column' }}>
-                {chatImagePreview && (
-                  <div className="image-preview-container">
-                    <img src={chatImagePreview} alt="preview" />
-                    <button type="button" className="btn-remove-preview" onClick={() => setChatImagePreview(null)}>✕</button>
+              <div style={{display: 'flex', flexDirection: 'column'}}>
+                
+                {/* 💡 準備回覆的預覽框 (置於輸入框上方) */}
+                {replyingTo && (
+                  <div className="reply-preview-bar">
+                    <div className="reply-preview-content">
+                      <span className="reply-preview-name">正在回覆 {replyingTo.senderName}</span>
+                      <span className="reply-preview-text">{replyingTo.text}</span>
+                    </div>
+                    <button className="btn-cancel-reply" onClick={() => setReplyingTo(null)}>✕</button>
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '10px', width: '100%', alignItems: 'center' }}>
-                  <label style={{ cursor: 'pointer', color: '#8e8e93', display: 'flex', alignItems: 'center', padding: '0 5px' }} title="附加圖片">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                    <input type="file" accept="image/*" style={{display: 'none'}} onChange={handleChatImageSelect} />
-                  </label>
-                  <input placeholder="輸入訊息..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
-                  <button type="submit" className="btn-send" style={{ color: activeRoom.themeColor, background: 'none', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>送出</button>
-                </div>
-              </form>
+
+                <form className="chat-input-area" onSubmit={handleSendMessage} style={{ flexDirection: 'column', borderTop: replyingTo ? 'none' : '' }}>
+                  {chatImagePreview && (
+                    <div className="image-preview-container">
+                      <img src={chatImagePreview} alt="preview" />
+                      <button type="button" className="btn-remove-preview" onClick={() => setChatImagePreview(null)}>✕</button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '10px', width: '100%', alignItems: 'center' }}>
+                    <label style={{ cursor: 'pointer', color: '#8e8e93', display: 'flex', alignItems: 'center', padding: '0 5px' }} title="附加圖片">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                      <input type="file" accept="image/*" style={{display: 'none'}} onChange={handleChatImageSelect} />
+                    </label>
+                    <input placeholder="輸入訊息..." value={newMessage} onChange={(e) => setNewMessage(e.target.value)} />
+                    <button type="submit" className="btn-send" style={{ color: activeRoom.themeColor, background: 'none', border: 'none', fontWeight: 'bold', fontSize: '16px', cursor: 'pointer' }}>送出</button>
+                  </div>
+                </form>
+              </div>
             )}
           </>
         ) : <div style={{ flex: 1, display: "flex", justifyContent: "center", alignItems: "center", color: "#8e8e93" }}>選擇聊天室開始對話</div>}

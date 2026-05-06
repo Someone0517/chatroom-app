@@ -5,12 +5,12 @@ DNE : N ; done : y ; checked : Y
 
 | **Basic components**   | **Score** | **Check** |
 | :--------------------- | :-------: | :-------: |
-| Membership Mechanism   |    5%     |     y     |
-| Host your Firebase page|    5%     |     y     |
-| Database read/write    |    5%     |     y     |
-| RWD                    |    5%     |     y     |
-| Git                    |    5%     |     y     |
-| Chatroom               |    25%    |     y     |
+| Membership Mechanism   |    5%     |    Y      |
+| Host your Firebase page|    5%     |    Y      |
+| Database read/write    |    5%     |    Y      |
+| RWD                    |    5%     |    Y      |
+| Git                    |    5%     |    Y      |
+| Chatroom               |    25%    |    Y      |
   |-- Create private chatrooms
   |-- Other members can see your messages
   |-- Load all history message
@@ -23,12 +23,12 @@ DNE : N ; done : y ; checked : Y
 | Third-party accounts       |    1%     |     Y     |
 | Chrome notification        |    5%     |     N     |
 | Use CSS animation          |    2%     |     Y     |
-| problems when sending code |    2%     |     N     | (I'm not sure)
+| problems when sending code |    2%     |     N     |
 
 
 | **User Profile(10%)**      |**be show**| **Check** |
 | :------------------------- | :-------: | :-------: |
-| Profile picture            |     v     |     Y     | (做成點擊頭貼顯示)
+| Profile picture            |     v     |     Y     | 
 | Username                   |     v     |     Y     |
 | Email                      |     v     |     Y     |
 | Phone number               |     X     |     Y     |
@@ -40,13 +40,15 @@ DNE : N ; done : y ; checked : Y
 | Edit message               |           |     Y     |
 | Search message             |           |     Y     |
 | Send image                 |           |     Y     |
-    oprate by double click the message
 
 |    **Bonus Components**    | **Score** | **Check** |
 | :------------------------- | :-------: | :-------: |
-| Reply for specify message  |    6%     |     N     |
-| Send the emoji             |    3%     |     N     |
-| Block User                 |    2%     |     N     | (待測試)
+| Reply for specify message  |    6%     |    N      |
+| Send the emoji             |    3%     |    N      |
+| Block User                 |    2%     |    Y      |
+<!-- (包含封鎖名單管理與攔截) -->
+
+<!-- 接下來的工作 : 加入更多CSS動畫 完成訊息reply 加入emoji使用 -->
 
 ### How to use 
 
