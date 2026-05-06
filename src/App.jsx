@@ -5,6 +5,7 @@ import { auth } from "./services/firebaseConfig";
 
 import LoginPage from "./pages/LoginPage";
 import ChatRoomPage from "./pages/ChatRoomPage";
+import NotificationManager from './components/NotificationManager'; // 💡 引入隱形通知元件
 
 function App() {
   const [user, setUser] = useState(null);
@@ -26,6 +27,9 @@ function App() {
 
   return (
     <BrowserRouter>
+      {/* 💡 UI 改善：將隱形通知元件掛載於此，只要有登入 (user 存在) 就會在背景默默運作 */}
+      {user && <NotificationManager user={user} />}
+      
       <Routes>
         {/* 路由守衛邏輯：
           如果未登入 (!user)，造訪首頁會被強制導向 (Navigate) 到 /login
