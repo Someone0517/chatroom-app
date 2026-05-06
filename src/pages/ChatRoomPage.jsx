@@ -223,7 +223,6 @@ function ChatRoomPage({ user }) {
     setShowSettings(false); setShowAvatarPicker(false); setShowEmojiMenu(false);
   };
   
-  // 💡 UI 改善：將所有原生 Alert / Confirm 替換為自訂彈窗
   const handleAddChat = async () => {
     const input = searchInput.trim().toLowerCase();
     if (!input || input === user.email?.toLowerCase() || input === personalId) return;
@@ -300,7 +299,7 @@ function ChatRoomPage({ user }) {
       await deleteDoc(doc(db, "chats", roomId));
       if(activeRoomId === roomId) setActiveRoomId(null);
       showToast("聊天室已刪除", "success");
-    }, true); // 標記為危險操作
+    }, true); 
   };
   
   const handleAddFriendFromList = async (target) => {
@@ -371,7 +370,6 @@ function ChatRoomPage({ user }) {
   return (
     <div className={`chatroom-container ${nightMode ? "night-mode" : ""}`} onClick={closeAllMenus}>
       
-      {/* 💡 UI 改善：置中對話框元件 */}
       {dialog.show && (
         <div className="custom-dialog-overlay" onClick={closeDialog}>
           <div className="custom-dialog-content" onClick={e => e.stopPropagation()}>
@@ -398,7 +396,6 @@ function ChatRoomPage({ user }) {
         </div>
       )}
 
-      {/* 💡 UI 改善：頂部 Toast 提示 */}
       {toast.show && (
         <div className={`toast-notification ${toast.type}`}>
           {toast.type === 'success' && "✅ "}
@@ -411,7 +408,6 @@ function ChatRoomPage({ user }) {
       <SettingsModal showSettings={showSettings} setShowSettings={setShowSettings} showAvatarPicker={showAvatarPicker} setShowAvatarPicker={setShowAvatarPicker} showEmojiMenu={showEmojiMenu} setShowEmojiMenu={setShowEmojiMenu} nightMode={nightMode} setNightMode={setNightMode} personalId={personalId} setPersonalId={setPersonalId} displayName={displayName} setDisplayName={setDisplayName} phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} address={address} setAddress={setAddress} avatarImage={avatarImage} setAvatarImage={setAvatarImage} avatarBgColor={avatarBgColor} setAvatarBgColor={setAvatarBgColor} avatarEmoji={avatarEmoji} setAvatarEmoji={setAvatarEmoji} handleSaveProfile={handleSaveProfile} handleImageUpload={handleImageUpload} user={user} logoColor={logoColor} presetColors={presetColors} />
       <InviteModal showInviteModal={showInviteModal} setShowInviteModal={setShowInviteModal} activeRoom={activeRoom} myFriends={myFriends} handleInviteFriendToGroup={handleInviteFriendToGroup} nightMode={nightMode} />
       
-      {/* 💡 傳遞 showToast 給子組件 */}
       <BlockListModal showBlockListModal={showBlockListModal} setShowBlockListModal={setShowBlockListModal} nightMode={nightMode} currentUserInfo={currentUserInfo} user={user} showToast={showToast} />
 
       <Sidebar 
@@ -520,14 +516,16 @@ function ChatRoomPage({ user }) {
                     </div>
 
                     <div className="msg-hover-container">
-                      <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start", position: 'relative' }}>
+                      {/* 💡 UI 改善：加入 minWidth: 0 與 flexShrink: 1 確保 flex 容器不會被超長文字撐破 */}
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start", position: 'relative', minWidth: 0, flexShrink: 1 }}>
                         
                         <div className={`message ${msg.senderId === user.uid ? "sent" : "received"}`} style={{ position: 'relative', ...(msg.senderId === user.uid ? { backgroundColor: activeRoom.themeColor } : {}) }}>
                           
                           {msg.replyTo && (
                             <div className="replied-msg-box" onClick={() => handleScrollToRepliedMessage(msg.replyTo.id)}>
                               <span style={{fontWeight: 'bold', marginBottom: '2px'}}>{msg.replyTo.senderName}</span>
-                              <span style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '200px'}}>
+                              {/* 💡 UI 改善：修復引用文字的長度溢出 */}
+                              <span style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%'}}>
                                 {msg.replyTo.text}
                               </span>
                             </div>
@@ -566,7 +564,8 @@ function ChatRoomPage({ user }) {
                       </div>
 
                       {!isEditing && (
-                        <div style={{position: 'relative', display: 'flex'}}>
+                        /* 💡 UI 改善：加入 flexShrink: 0 確保工具列按鈕不會被壓縮 */
+                        <div style={{position: 'relative', display: 'flex', flexShrink: 0}}>
                           <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setReactionMenuId(reactionMenuId === msg.id ? null : msg.id); setMsgMenuId(null); }}>
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
                           </button>

@@ -102,7 +102,7 @@ html, body, #root {
   cursor: pointer;
   border-bottom: 1px solid #e5e5ea;
   transition: background-color 0.2s ease, transform 0.1s ease;
-  position: relative; /* 💡 UI 改善：修復「...」選單跑到右上角的問題 */
+  position: relative;
 }
 
 .chatroom-container.night-mode .friend-item {
@@ -242,6 +242,8 @@ html, body, #root {
   margin-bottom: 20px;
   align-items: flex-end; 
   animation: messageSlideIn 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  /* 💡 UI 改善：讓最外圍的訊息框擁有縮小的能力 */
+  min-width: 0;
 }
 
 .message-with-avatar.sent {
@@ -294,6 +296,16 @@ html, body, #root {
   border-radius: 20px;
   position: relative; 
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  /* 💡 UI 改善：徹底解決文字溢出問題 */
+  max-width: 100%;
+  word-break: break-word; /* 強制超長連續英文字母或網址換行 */
+  overflow-wrap: anywhere; 
+}
+
+/* 💡 UI 改善：針對對話氣泡內的 P 標籤設定保留原格式的換行屬性 */
+.message p {
+  margin: 0;
+  white-space: pre-wrap; 
 }
 
 .message.received {
@@ -509,7 +521,7 @@ input:checked + .slider:before { transform: translateX(22px); }
 
 .profile-icon { width: 38px; height: 38px; border-radius: 50%; background: #333; cursor: pointer; display: flex; justify-content: center; align-items: center; flex-shrink: 0; border: 1px solid #444; overflow: hidden; transition: transform 0.2s; }
 .profile-icon:hover { transform: scale(1.05); }
-.avatar { width: 40px; height: 40px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px; flex-shrink: 0; overflow: hidden; /* 💡 UI 改善：防止自訂頭貼超出圓形範圍 */ }
+.avatar { width: 40px; height: 40px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; margin-right: 10px; flex-shrink: 0; overflow: hidden; }
 .mobile-only { display: none; }
 @media (max-width: 768px) {
   .sidebar { width: 100%; }
@@ -546,7 +558,13 @@ mark { background-color: #ffd60a; color: #000; border-radius: 3px; padding: 0 2p
 .chat-message-image { max-width: 250px; max-height: 250px; border-radius: 12px; margin-bottom: 5px; cursor: pointer; border: 1px solid rgba(120, 120, 128, 0.2); transition: transform 0.2s; }
 .chat-message-image:hover { transform: scale(1.02); }
 
-.msg-hover-container { display: flex; align-items: center; gap: 4px; position: relative; margin: 0 5px; }
+.msg-hover-container { 
+  display: flex; align-items: center; gap: 4px; position: relative; margin: 0 5px; 
+  /* 💡 UI 改善：讓 Flex 容器允許壓縮，是斷行的核心關鍵 */
+  min-width: 0; 
+  max-width: 100%;
+}
+
 .message-with-avatar.sent .msg-hover-container { flex-direction: row-reverse; }
 
 .btn-msg-more {
@@ -628,9 +646,12 @@ mark { background-color: #ffd60a; color: #000; border-radius: 3px; padding: 0 2p
   animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 .chatroom-container.night-mode .reply-preview-bar { background: rgba(10, 132, 255, 0.15); }
-.reply-preview-content { display: flex; flex-direction: column; overflow: hidden; }
+
+/* 💡 UI 改善：處理回覆預覽框的寬度與溢出 */
+.reply-preview-content { display: flex; flex-direction: column; overflow: hidden; flex: 1; margin-right: 10px; }
 .reply-preview-name { font-weight: bold; margin-bottom: 2px; color: #0a84ff; }
-.reply-preview-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.reply-preview-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
 .btn-cancel-reply { background: none; border: none; font-size: 18px; cursor: pointer; color: #8e8e93; padding: 0 5px; transition: all 0.2s; }
 .btn-cancel-reply:hover { color: #ff453a; transform: scale(1.2) rotate(90deg); }
 
@@ -639,6 +660,9 @@ mark { background-color: #ffd60a; color: #000; border-radius: 3px; padding: 0 2p
   padding: 8px 12px; border-radius: 12px; margin-bottom: 8px; cursor: pointer;
   display: flex; flex-direction: column; border-left: 4px solid rgba(255, 255, 255, 0.6);
   box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  /* 💡 UI 改善：確保引用框內文字寬度也能被限制 */
+  max-width: 100%;
+  min-width: 0;
 }
 .replied-msg-box:hover { background: rgba(0, 0, 0, 0.25); transform: translateY(-1px); }
 .message.received .replied-msg-box {
