@@ -3,11 +3,10 @@ import { doc, getDoc, updateDoc, arrayRemove, arrayUnion, collection, query, whe
 import { db } from "../services/firebaseConfig";
 import { renderAvatar } from "../utils/chatHelpers";
 
-export default function BlockListModal({ showBlockListModal, setShowBlockListModal, nightMode, currentUserInfo, user }) {
+export default function BlockListModal({ showBlockListModal, setShowBlockListModal, nightMode, currentUserInfo, user, showToast }) {
   const [blockEmailInput, setBlockEmailInput] = useState("");
   const [blockedUsersDetails, setBlockedUsersDetails] = useState([]);
 
-  // 當 modal 打開或封鎖名單變動時，抓取被封鎖者的詳細資料 (名字、頭像)
   useEffect(() => {
     if (!showBlockListModal || !currentUserInfo?.blockedUsers?.length) {
       setBlockedUsersDetails([]);
@@ -24,43 +23,39 @@ export default function BlockListModal({ showBlockListModal, setShowBlockListMod
     fetchBlockedUsers();
   }, [showBlockListModal, currentUserInfo?.blockedUsers]);
 
-  // 💡 用 Email 封鎖功能
   const handleBlockByEmail = async (e) => {
     e.preventDefault();
     const targetEmail = blockEmailInput.trim().toLowerCase();
     if(!targetEmail) return;
-    if(targetEmail === user.email.toLowerCase()) return alert("不能封鎖自己");
+    if(targetEmail === user.email.toLowerCase()) return showToast("不能封鎖自己", "error");
 
     try {
-      // 搜尋信箱
       const q = query(collection(db, "users"), where("email", "==", targetEmail));
       const snap = await getDocs(q);
       if(snap.empty) {
-         alert("找不到此信箱對應的使用者");
+         showToast("找不到此信箱對應的使用者", "error");
          return;
       }
       
       const targetUid = snap.docs[0].data().uid;
-      // 檢查是否已經封鎖
       if (currentUserInfo?.blockedUsers?.includes(targetUid)) {
-         alert("該使用者已經在封鎖名單中");
+         showToast("該使用者已經在封鎖名單中", "error");
          setBlockEmailInput("");
          return;
       }
       
-      // 更新到封鎖陣列
       await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayUnion(targetUid) });
       setBlockEmailInput("");
-      alert("已成功封鎖該使用者");
+      showToast("已成功封鎖該使用者", "success");
     } catch(err) {
       console.error("封鎖失敗", err);
     }
   };
 
-  // 💡 解除封鎖功能
   const handleUnblock = async (targetUid) => {
     try {
       await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayRemove(targetUid) });
+      showToast("已解除封鎖", "success");
     } catch(err) {
       console.error("解除封鎖失敗", err);
     }
@@ -73,7 +68,6 @@ export default function BlockListModal({ showBlockListModal, setShowBlockListMod
       <div className="modal-content" onClick={e => e.stopPropagation()}>
         <h3 style={{ marginTop: 0, color: nightMode ? '#fff' : '#000' }}>封鎖名單管理</h3>
 
-        {/* 用 Email 封鎖的輸入框 */}
         <form onSubmit={handleBlockByEmail} style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           <input
             type="email"
@@ -95,7 +89,6 @@ export default function BlockListModal({ showBlockListModal, setShowBlockListMod
 
         <div className="menu-label">目前已封鎖的使用者</div>
         
-        {/* 封鎖名單列表 */}
         <div className="invite-list" style={{ maxHeight: '300px', overflowY: 'auto' }}>
           {blockedUsersDetails.length === 0 ? (
             <p style={{color: '#8e8e93', textAlign: 'center', margin: '20px 0'}}>目前沒有封鎖任何使用者</p>

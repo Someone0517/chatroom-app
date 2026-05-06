@@ -11,7 +11,7 @@ import BlockListModal from "../components/BlockListModal";
 import { formatTime, renderAvatar, getFriendDynamicName, compressImage } from "../utils/chatHelpers";
 
 const presetColors = ["#007aff", "#34c759", "#ff9500", "#ff453a", "#af52de"];
-const QUICK_EMOJIS = ["❤️", "😂", "😮", "😢", "😡", "👍"]; // Instagram 預設表情
+const QUICK_EMOJIS = ["❤️", "😂", "😮", "😢", "😡", "👍"]; 
 
 function ChatRoomPage({ user }) {
   const [showChat, setShowChat] = useState(false);
@@ -35,6 +35,10 @@ function ChatRoomPage({ user }) {
   const [showBlockListModal, setShowBlockListModal] = useState(false); 
   const [avatarPopover, setAvatarPopover] = useState({ show: false, x: 0, y: 0, user: null, isSelf: false });
 
+  // 💡 UI 改善：全新自訂 Toast 與 Dialog 狀態
+  const [toast, setToast] = useState({ show: false, message: "", type: "info" });
+  const [dialog, setDialog] = useState({ show: false, type: "", title: "", message: "", defaultValue: "", onConfirm: null, isDanger: false });
+
   const [personalId, setPersonalId] = useState(""); 
   const [displayName, setDisplayName] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(""); 
@@ -53,7 +57,6 @@ function ChatRoomPage({ user }) {
   const [chatImagePreview, setChatImagePreview] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   
-  // 💡 訊息操作狀態
   const [msgMenuId, setMsgMenuId] = useState(null);
   const [reactionMenuId, setReactionMenuId] = useState(null);
   const [editMsgData, setEditMsgData] = useState(null);
@@ -66,6 +69,19 @@ function ChatRoomPage({ user }) {
   const logoColor = activeRoom?.themeColor || "#0a84ff";
 
   const hasStrangerMsgs = chatRooms.some(r => r.acceptedBy && !r.acceptedBy.includes(user.uid));
+
+  // 💡 UI 改善：全新輔助函式 (取代 alert/prompt/confirm)
+  const showToast = (message, type = "info") => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: "", type: "info" }), 3000);
+  };
+  const showConfirm = (title, message, onConfirm, isDanger = false) => {
+    setDialog({ show: true, type: "confirm", title, message, defaultValue: "", onConfirm, isDanger });
+  };
+  const showPrompt = (title, message, defaultValue, onConfirm) => {
+    setDialog({ show: true, type: "prompt", title, message, defaultValue, onConfirm, isDanger: false });
+  };
+  const closeDialog = () => setDialog({ show: false, type: "", title: "", message: "", defaultValue: "", onConfirm: null, isDanger: false });
 
   const filteredRooms = chatRooms.filter(room => {
     const isStranger = room.acceptedBy && !room.acceptedBy.includes(user.uid);
@@ -113,7 +129,6 @@ function ChatRoomPage({ user }) {
     });
     updateDoc(doc(db, "chats", activeRoomId), { [`unreadCount.${user.uid}`]: 0, [`lastReadTime.${user.uid}`]: serverTimestamp() });
     
-    // 切換聊天室時重置所有操作
     setShowSearch(false); setChatSearchText(""); setChatImagePreview(null); 
     setMsgMenuId(null); setReactionMenuId(null); setEditMsgData(null); setReplyingTo(null);
     return () => unsubscribe();
@@ -141,12 +156,11 @@ function ChatRoomPage({ user }) {
     }
   }, [searchIndex, searchMatches]);
 
-  // 💡 點擊引用訊息進行跳轉與高亮
   const handleScrollToRepliedMessage = (msgId) => {
     if (msgRefs.current[msgId]) {
       msgRefs.current[msgId].scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightMsgId(msgId);
-      setTimeout(() => setHighlightMsgId(null), 1500); // 動畫結束後移除
+      setTimeout(() => setHighlightMsgId(null), 1500); 
     }
   };
 
@@ -168,25 +182,18 @@ function ChatRoomPage({ user }) {
     await addDoc(collection(db, "chats", roomId, "messages"), { text, isSystem: true, createdAt: serverTimestamp() });
   };
 
-  // 💡 發送訊息時附加 replyTo 資料
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!newMessage.trim() && !chatImagePreview) return;
     const txt = newMessage; const imgUrl = chatImagePreview;
     
-    // 建立引用快照
-    const replyData = replyingTo ? {
-      id: replyingTo.id,
-      text: replyingTo.text || "[圖片]",
-      senderName: replyingTo.senderName
-    } : null;
+    const replyData = replyingTo ? { id: replyingTo.id, text: replyingTo.text || "[圖片]", senderName: replyingTo.senderName } : null;
 
     setNewMessage(""); setChatImagePreview(null); setReplyingTo(null);
     
     try {
         await addDoc(collection(db, "chats", activeRoomId, "messages"), { 
-          text: txt, imageUrl: imgUrl, senderId: user.uid, createdAt: serverTimestamp(), isEdited: false,
-          replyTo: replyData
+          text: txt, imageUrl: imgUrl, senderId: user.uid, createdAt: serverTimestamp(), isEdited: false, replyTo: replyData
         });
         const up = { lastMessageText: imgUrl ? "[圖片]" : txt, updatedAt: serverTimestamp() };
         activeRoom.participants.forEach(p => { if (p !== user.uid) up[`unreadCount.${p}`] = increment(1); });
@@ -194,16 +201,11 @@ function ChatRoomPage({ user }) {
     } catch(err) { console.error("發送錯誤:", err); }
   };
 
-  // 💡 發送或收回表情符號
   const toggleReaction = async (msgId, emoji, currentReactions) => {
     const msgRef = doc(db, "chats", activeRoomId, "messages", msgId);
-    const myCurrentReaction = currentReactions?.[user.uid];
-    
-    if (myCurrentReaction === emoji) {
-      // 點擊相同的表情 -> 收回 (Unsend)
+    if (currentReactions?.[user.uid] === emoji) {
       await updateDoc(msgRef, { [`reactions.${user.uid}`]: deleteField() });
     } else {
-      // 點擊新的表情 -> 覆蓋或發送
       await updateDoc(msgRef, { [`reactions.${user.uid}`]: emoji });
     }
     setReactionMenuId(null);
@@ -221,6 +223,7 @@ function ChatRoomPage({ user }) {
     setShowSettings(false); setShowAvatarPicker(false); setShowEmojiMenu(false);
   };
   
+  // 💡 UI 改善：將所有原生 Alert / Confirm 替換為自訂彈窗
   const handleAddChat = async () => {
     const input = searchInput.trim().toLowerCase();
     if (!input || input === user.email?.toLowerCase() || input === personalId) return;
@@ -235,14 +238,14 @@ function ChatRoomPage({ user }) {
       }
       const [snapE, snapI] = await Promise.all([getDocs(query(collection(db, "users"), where("email", "==", input))), getDocs(query(collection(db, "users"), where("personalId", "==", input)))]);
       const targetDoc = snapE.docs[0] || snapI.docs[0];
-      if (!targetDoc) return alert("找不到該使用者");
+      if (!targetDoc) return showToast("找不到該使用者", "error");
       const targetData = targetDoc.data();
 
-      if (currentUserInfo?.blockedUsers?.includes(targetData.uid)) return alert("你已封鎖此用戶，請先至設定解除封鎖。");
-      if (targetData.blockedUsers?.includes(user.uid)) return alert("很抱歉，你無法新增此用戶。");
+      if (currentUserInfo?.blockedUsers?.includes(targetData.uid)) return showToast("你已封鎖此用戶，請先至設定解除封鎖。", "error");
+      if (targetData.blockedUsers?.includes(user.uid)) return showToast("很抱歉，你無法新增此用戶。", "error");
 
       const existingRoom = chatRooms.find(r => (r.type === "private" || (!r.type && r.participants.length === 2)) && r.participants.includes(targetData.uid));
-      if (existingRoom) { alert("你們已經是好友囉！"); setActiveRoomId(existingRoom.id); setSearchInput(""); return; }
+      if (existingRoom) { showToast("你們已經是好友囉！", "info"); setActiveRoomId(existingRoom.id); setSearchInput(""); return; }
 
       const newRoom = await addDoc(collection(db, "chats"), {
         participants: [user.uid, targetData.uid], participantEmails: [user.email, targetData.email], themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), type: "private", unreadCount: { [user.uid]: 0, [targetData.uid]: 0 }, lastReadTime: { [user.uid]: serverTimestamp(), [targetData.uid]: serverTimestamp() },
@@ -254,62 +257,75 @@ function ChatRoomPage({ user }) {
   
   const handleCreateNewGroup = async () => {
     if (activeRoom.type === "group") return;
-    const randomId = Math.floor(10000000 + Math.random() * 90000000).toString();
-    const groupName = prompt("請輸入新群組名稱：", "新群組");
-    if (!groupName) return;
-    const newGroup = await addDoc(collection(db, "chats"), {
-      type: "group", groupId: randomId, groupName, participants: activeRoom.participants, participantEmails: activeRoom.participantEmails, themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), unreadCount: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: 0 }), {}), lastReadTime: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: serverTimestamp() }), {}),
-      acceptedBy: [user.uid]
+    showPrompt("發起群組聊天", "請為新群組取一個名稱", "新群組", async (groupName) => {
+      if (!groupName) return;
+      const randomId = Math.floor(10000000 + Math.random() * 90000000).toString();
+      const newGroup = await addDoc(collection(db, "chats"), {
+        type: "group", groupId: randomId, groupName, participants: activeRoom.participants, participantEmails: activeRoom.participantEmails, themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), unreadCount: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: 0 }), {}), lastReadTime: activeRoom.participants.reduce((acc, pid) => ({ ...acc, [pid]: serverTimestamp() }), {}),
+        acceptedBy: [user.uid]
+      });
+      setActiveRoomId(newGroup.id); setShowThemePicker(false); 
+      showToast(`群組已建立！群組 ID: ${randomId}`, "success");
     });
-    setActiveRoomId(newGroup.id); setShowThemePicker(false); alert(`全新群組已建立！群組 ID: ${randomId}`);
   };
 
   const handleRenameGroup = async () => {
-    const newName = prompt("新名稱：", activeRoom.groupName || "");
-    if(newName) {
-      await updateDoc(doc(db, "chats", activeRoomId), { groupName: newName });
-      await sendSystemMessage(activeRoomId, `${displayName} 更改了群組名稱為「${newName}」`);
-    }
+    showPrompt("更改群組名稱", "請輸入新的群組名稱", activeRoom.groupName || "", async (newName) => {
+      if(newName) {
+        await updateDoc(doc(db, "chats", activeRoomId), { groupName: newName });
+        await sendSystemMessage(activeRoomId, `${displayName} 更改了群組名稱為「${newName}」`);
+        showToast("群組名稱已更新", "success");
+      }
+    });
   };
 
   const handleInviteFriendToGroup = async (friend) => {
     if (activeRoom.participants.includes(friend.uid)) return;
     await updateDoc(doc(db, "chats", activeRoomId), { participants: arrayUnion(friend.uid), participantEmails: arrayUnion(friend.email), [`unreadCount.${friend.uid}`]: 0, [`lastReadTime.${friend.uid}`]: serverTimestamp(), updatedAt: serverTimestamp() });
     await sendSystemMessage(activeRoomId, `${displayName} 邀請了 ${friend.email.split('@')[0]} 加入群組`);
-    alert(`已邀請 ${friend.email.split('@')[0]}`);
+    showToast(`已邀請 ${friend.email.split('@')[0]}`, "success");
   };
 
   const handleLeaveGroup = async (roomId, groupName) => {
-    if(window.confirm(`確定要退出「${groupName || "群組"}」嗎？`)) {
+    showConfirm("退出群組", `確定要退出「${groupName || "群組"}」嗎？`, async () => {
       await sendSystemMessage(roomId, `${displayName} 已退出群組`);
       await updateDoc(doc(db, "chats", roomId), { participants: arrayRemove(user.uid), participantEmails: arrayRemove(user.email) });
       if(activeRoomId === roomId) setActiveRoomId(null);
-    }
+      showToast("已退出群組", "success");
+    });
   };
 
   const handleDeleteRoom = async (roomId) => {
-    if(window.confirm("確定要刪除這個聊天室嗎？這將會從雙方的列表移除，並且不再將對方視為好友。")) {
+    showConfirm("刪除聊天室", "確定要刪除這個聊天室嗎？這將會從雙方的列表移除，並且不再將對方視為好友。", async () => {
       await deleteDoc(doc(db, "chats", roomId));
       if(activeRoomId === roomId) setActiveRoomId(null);
-    }
+      showToast("聊天室已刪除", "success");
+    }, true); // 標記為危險操作
   };
   
   const handleAddFriendFromList = async (target) => {
     if (target.uid === user.uid) return;
-    if (currentUserInfo?.blockedUsers?.includes(target.uid)) return alert("你已封鎖此用戶，請先解除封鎖。");
-    if (target.blockedUsers?.includes(user.uid)) return alert("很抱歉，你無法新增此用戶。");
+    if (currentUserInfo?.blockedUsers?.includes(target.uid)) return showToast("你已封鎖此用戶，請先解除封鎖。", "error");
+    if (target.blockedUsers?.includes(user.uid)) return showToast("很抱歉，你無法新增此用戶。", "error");
 
     const existingRoom = chatRooms.find(r => (r.type === "private" || (!r.type && r.participants.length === 2)) && r.participants.includes(target.uid));
-    if (existingRoom) { alert("你們已經是好友囉！"); setActiveRoomId(existingRoom.id); return; }
+    if (existingRoom) { showToast("你們已經是好友囉！", "info"); setActiveRoomId(existingRoom.id); return; }
 
     const newRoom = await addDoc(collection(db, "chats"), { participants: [user.uid, target.uid], participantEmails: [user.email, target.email], themeColor: "#007aff", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), type: "private", unreadCount: { [user.uid]: 0, [target.uid]: 0 }, acceptedBy: [user.uid] });
     await addDoc(collection(db, "chats", newRoom.id, "messages"), { text: `我是來自 ${activeRoom.groupName || "群組"} 的 ${displayName || user.email.split('@')[0]}`, senderId: user.uid, createdAt: serverTimestamp() });
-    alert("已發送私訊請求！");
+    showToast("已發送私訊請求！", "success");
   };
 
-  const handleAcceptRequest = async () => { await updateDoc(doc(db, "chats", activeRoomId), { acceptedBy: arrayUnion(user.uid) }); };
+  const handleAcceptRequest = async () => { 
+    await updateDoc(doc(db, "chats", activeRoomId), { acceptedBy: arrayUnion(user.uid) }); 
+    showToast("已接受訊息請求", "success");
+  };
   const handleDeclineRequest = async () => {
-    if (window.confirm("確定要拒絕並刪除這個聊天室嗎？")) { await deleteDoc(doc(db, "chats", activeRoomId)); setActiveRoomId(null); }
+    showConfirm("拒絕訊息", "確定要拒絕並刪除這個聊天室嗎？", async () => {
+      await deleteDoc(doc(db, "chats", activeRoomId)); 
+      setActiveRoomId(null); 
+      showToast("已拒絕並刪除", "success");
+    }, true);
   };
 
   const handleAvatarClick = async (e, targetUid) => {
@@ -328,11 +344,13 @@ function ChatRoomPage({ user }) {
   const handleBlockUser = async (targetUid) => {
     const isCurrentlyBlocked = currentUserInfo?.blockedUsers?.includes(targetUid);
     if (isCurrentlyBlocked) {
-      await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayRemove(targetUid) }); alert("已解除封鎖");
+      await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayRemove(targetUid) }); 
+      showToast("已解除封鎖", "success");
     } else {
-      if(window.confirm("確定要封鎖該用戶嗎？雙方將無法傳送訊息。")) {
-        await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayUnion(targetUid) }); alert("已封鎖該用戶");
-      }
+      showConfirm("封鎖用戶", "確定要封鎖該用戶嗎？雙方將無法傳送訊息。", async () => {
+        await updateDoc(doc(db, "users", user.uid), { blockedUsers: arrayUnion(targetUid) }); 
+        showToast("已封鎖該用戶", "success");
+      }, true);
     }
     setAvatarPopover({show: false});
   };
@@ -348,15 +366,53 @@ function ChatRoomPage({ user }) {
     else if (currentUserInfo?.blockedUsers?.includes(friendUid)) { isBlocked = true; blockMessage = "解除封鎖後即可傳送訊息"; }
   }
 
-  // 點擊背景收合所有選單
   const closeAllMenus = () => { setMsgMenuId(null); setReactionMenuId(null); };
 
   return (
     <div className={`chatroom-container ${nightMode ? "night-mode" : ""}`} onClick={closeAllMenus}>
+      
+      {/* 💡 UI 改善：置中對話框元件 */}
+      {dialog.show && (
+        <div className="custom-dialog-overlay" onClick={closeDialog}>
+          <div className="custom-dialog-content" onClick={e => e.stopPropagation()}>
+            <h3>{dialog.title}</h3>
+            {dialog.message && <p>{dialog.message}</p>}
+            {dialog.type === "prompt" && (
+              <input
+                autoFocus id="dialog-prompt-input" className="dialog-input" defaultValue={dialog.defaultValue}
+                onKeyDown={e => { if (e.key === 'Enter') { if(dialog.onConfirm) dialog.onConfirm(e.target.value); closeDialog(); } }}
+              />
+            )}
+            <div className="dialog-actions">
+              <button className="btn-dialog-cancel" onClick={closeDialog}>取消</button>
+              <button
+                className={`btn-dialog-confirm ${dialog.isDanger ? 'danger' : ''}`}
+                onClick={() => {
+                  const val = dialog.type === "prompt" ? document.getElementById("dialog-prompt-input").value : null;
+                  if (dialog.onConfirm) dialog.onConfirm(val);
+                  closeDialog();
+                }}
+              >確認</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 💡 UI 改善：頂部 Toast 提示 */}
+      {toast.show && (
+        <div className={`toast-notification ${toast.type}`}>
+          {toast.type === 'success' && "✅ "}
+          {toast.type === 'error' && "⚠️ "}
+          {toast.message}
+        </div>
+      )}
+
       <UserProfilePopover popoverData={avatarPopover} setPopoverData={setAvatarPopover} nightMode={nightMode} handleAddFriendFromList={handleAddFriendFromList} handleCreateNewGroup={handleCreateNewGroup} myFriends={myFriends} handleBlockUser={handleBlockUser} currentUserInfo={currentUserInfo} />
       <SettingsModal showSettings={showSettings} setShowSettings={setShowSettings} showAvatarPicker={showAvatarPicker} setShowAvatarPicker={setShowAvatarPicker} showEmojiMenu={showEmojiMenu} setShowEmojiMenu={setShowEmojiMenu} nightMode={nightMode} setNightMode={setNightMode} personalId={personalId} setPersonalId={setPersonalId} displayName={displayName} setDisplayName={setDisplayName} phoneNumber={phoneNumber} setPhoneNumber={setPhoneNumber} address={address} setAddress={setAddress} avatarImage={avatarImage} setAvatarImage={setAvatarImage} avatarBgColor={avatarBgColor} setAvatarBgColor={setAvatarBgColor} avatarEmoji={avatarEmoji} setAvatarEmoji={setAvatarEmoji} handleSaveProfile={handleSaveProfile} handleImageUpload={handleImageUpload} user={user} logoColor={logoColor} presetColors={presetColors} />
       <InviteModal showInviteModal={showInviteModal} setShowInviteModal={setShowInviteModal} activeRoom={activeRoom} myFriends={myFriends} handleInviteFriendToGroup={handleInviteFriendToGroup} nightMode={nightMode} />
-      <BlockListModal showBlockListModal={showBlockListModal} setShowBlockListModal={setShowBlockListModal} nightMode={nightMode} currentUserInfo={currentUserInfo} user={user} />
+      
+      {/* 💡 傳遞 showToast 給子組件 */}
+      <BlockListModal showBlockListModal={showBlockListModal} setShowBlockListModal={setShowBlockListModal} nightMode={nightMode} currentUserInfo={currentUserInfo} user={user} showToast={showToast} />
 
       <Sidebar 
         showChat={showChat} user={user} logoColor={logoColor} setShowSettings={setShowSettings} avatarImage={avatarImage} avatarEmoji={avatarEmoji} displayName={displayName} searchInput={searchInput} setSearchInput={setSearchInput} handleAddChat={handleAddChat} 
@@ -450,9 +506,8 @@ function ChatRoomPage({ user }) {
                   });
                 }
 
-                // 💡 計算表情回應
                 const reactionEntries = Object.values(msg.reactions || {});
-                const uniqueEmojis = [...new Set(reactionEntries)].slice(0, 3); // 最多顯示三種不重複表情
+                const uniqueEmojis = [...new Set(reactionEntries)].slice(0, 3); 
 
                 return (
                   <div key={msg.id} className={`message-with-avatar ${msg.senderId === user.uid ? "sent" : "received"} ${highlightMsgId === msg.id ? 'highlight-flash' : ''}`} ref={el => msgRefs.current[msg.id] = el}>
@@ -467,9 +522,8 @@ function ChatRoomPage({ user }) {
                     <div className="msg-hover-container">
                       <div style={{ display: "flex", flexDirection: "column", alignItems: msg.senderId === user.uid ? "flex-end" : "flex-start", position: 'relative' }}>
                         
-                        <div className={`message ${msg.senderId === user.uid ? "sent" : "received"}`} style={msg.senderId === user.uid ? { backgroundColor: activeRoom.themeColor } : {}}>
+                        <div className={`message ${msg.senderId === user.uid ? "sent" : "received"}`} style={{ position: 'relative', ...(msg.senderId === user.uid ? { backgroundColor: activeRoom.themeColor } : {}) }}>
                           
-                          {/* 💡 渲染被引用的訊息區塊 */}
                           {msg.replyTo && (
                             <div className="replied-msg-box" onClick={() => handleScrollToRepliedMessage(msg.replyTo.id)}>
                               <span style={{fontWeight: 'bold', marginBottom: '2px'}}>{msg.replyTo.senderName}</span>
@@ -494,15 +548,14 @@ function ChatRoomPage({ user }) {
                               {msg.isEdited && <span className="edited-tag">(已編輯)</span>}
                             </p>
                           )}
-                        </div>
 
-                        {/* 💡 渲染表情符號徽章 */}
-                        {uniqueEmojis.length > 0 && (
-                          <div className="reaction-badge">
-                            {uniqueEmojis.join("")}
-                            {reactionEntries.length > 1 && <span className="reaction-count">{reactionEntries.length}</span>}
-                          </div>
-                        )}
+                          {uniqueEmojis.length > 0 && (
+                            <div className="reaction-badge">
+                              {uniqueEmojis.join("")}
+                              {reactionEntries.length > 1 && <span className="reaction-count">{reactionEntries.length}</span>}
+                            </div>
+                          )}
+                        </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: uniqueEmojis.length > 0 ? '16px' : '4px' }}>
                           <span className="message-time" style={{marginTop: 0}}>{formatTime(msg.createdAt)}</span>
@@ -512,28 +565,22 @@ function ChatRoomPage({ user }) {
                         </div>
                       </div>
 
-                      {/* 💡 訊息 Hover 工具列 (回覆、表情、更多) */}
                       {!isEditing && (
                         <div style={{position: 'relative', display: 'flex'}}>
-                          
-                          {/* 表情按鈕 */}
                           <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setReactionMenuId(reactionMenuId === msg.id ? null : msg.id); setMsgMenuId(null); }}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
                           </button>
 
-                          {/* 回覆按鈕 */}
                           <button className="btn-msg-more" onClick={() => setReplyingTo({id: msg.id, text: msg.text || (msg.imageUrl && "[圖片]"), senderName: currentName})}>
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>
                           </button>
 
-                          {/* 更多 (只有發送者能編輯與收回) */}
                           {msg.senderId === user.uid && (
                             <button className="btn-msg-more" onClick={(e) => { e.stopPropagation(); setMsgMenuId(msgMenuId === msg.id ? null : msg.id); setReactionMenuId(null); }}>
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none"><circle cx="12" cy="12" r="2"></circle><circle cx="12" cy="5" r="2"></circle><circle cx="12" cy="19" r="2"></circle></svg>
                             </button>
                           )}
                           
-                          {/* 表情面板 Popover */}
                           {reactionMenuId === msg.id && (
                             <div className="reaction-popover" onClick={e => e.stopPropagation()}>
                               {QUICK_EMOJIS.map(emoji => (
@@ -542,7 +589,6 @@ function ChatRoomPage({ user }) {
                             </div>
                           )}
 
-                          {/* 更多面板 Popover */}
                           {msgMenuId === msg.id && (
                             <div className="msg-action-popover" onClick={e => e.stopPropagation()}>
                               <button onClick={() => { setEditMsgData({id: msg.id, text: msg.text || ""}); setMsgMenuId(null); }}>編輯</button>
@@ -571,7 +617,6 @@ function ChatRoomPage({ user }) {
             ) : (
               <div style={{display: 'flex', flexDirection: 'column'}}>
                 
-                {/* 💡 準備回覆的預覽框 (置於輸入框上方) */}
                 {replyingTo && (
                   <div className="reply-preview-bar">
                     <div className="reply-preview-content">
